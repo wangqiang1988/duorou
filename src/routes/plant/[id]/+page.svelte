@@ -502,85 +502,84 @@
 				<p class="text-xs text-leaf-600/60 text-center mb-3">
 					时间倒序 · 点击照片浏览大图 · 底部生成成长长图
 				</p>
-				<div class="flex flex-col gap-3">
+				<div class="flex flex-col gap-2.5">
 					{#each sortedPhotos as photo (photo.id)}
 						{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
-						<div class="relative group">
+						<div
+							class="relative group bg-white rounded-xl overflow-hidden shadow-sm shadow-leaf-900/5"
+							role="button"
+							tabindex="0"
+							onclick={() => openLightbox(globalIdx)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter' || e.key === ' ') {
+									e.preventDefault();
+									openLightbox(globalIdx);
+								}
+							}}
+						>
+							<!-- 微缩图：固定最大高度 160px，保留原图比例 -->
+							<img
+								src={blobUrl(photo.id, 'thumb')}
+								alt=""
+								class="w-full max-h-40 object-cover"
+								loading="lazy"
+							/>
+
+							<!-- 日期 + 操作（叠在图片底部，半透明背景） -->
 							<div
-								class="block w-full overflow-hidden rounded-2xl bg-leaf-50 relative shadow-sm shadow-leaf-900/5"
-								role="button"
-								tabindex="0"
-								onclick={() => openLightbox(globalIdx)}
-								onkeydown={(e) => {
-									if (e.key === 'Enter' || e.key === ' ') {
-										e.preventDefault();
-										openLightbox(globalIdx);
-									}
-								}}
+								class="absolute inset-x-0 bottom-0 flex items-center justify-between px-2.5 py-1.5 text-[11px] text-white bg-gradient-to-t from-black/65 to-transparent"
 							>
-								<div class="flex items-center justify-between px-3 pt-2 pb-1.5 text-xs text-leaf-700">
-									<div class="flex items-center gap-2">
-										<span class="font-medium">{formatDay(photo.takenAt)}</span>
-										{#if photo.dateSource === 'exif'}
-											<span class="text-[10px] text-leaf-600/60 bg-leaf-50 px-1.5 py-0.5 rounded">EXIF</span>
-										{/if}
-									</div>
-									<div class="flex items-center gap-2">
-										<button
-											type="button"
-											onclick={(e) => {
-												e.stopPropagation();
-												editPhotoDate(photo);
-											}}
-											class="text-leaf-600/70 hover:text-leaf-700"
-											title="修改日期"
-										>
-											✎
-										</button>
-										<button
-											type="button"
-											onclick={(e) => {
-												e.stopPropagation();
-												handleDeletePhoto(photo.id);
-											}}
-											class="text-red-500/70 hover:text-red-600"
-											aria-label="删除"
-										>
-											✕
-										</button>
-									</div>
+								<div class="flex items-center gap-1.5">
+									<span class="font-medium drop-shadow">{formatDay(photo.takenAt)}</span>
+									{#if photo.dateSource === 'exif'}
+										<span class="opacity-70 text-[10px] bg-white/15 px-1 py-px rounded">EXIF</span>
+									{/if}
+									{#if isSuspiciousDate(photo.takenAt)}
+										<span class="text-amber-300 text-[10px]">⚠</span>
+									{/if}
 								</div>
-								<img
-									src={blobUrl(photo.id, 'medium')}
-									alt=""
-									class="w-full object-cover"
-									loading="lazy"
-								/>
-								<!-- 拼接图勾选按钮（可点击） -->
-								<button
-									type="button"
-									onclick={(e) => {
-										e.stopPropagation();
-										toggleCompose(photo.id);
-									}}
-									class="absolute top-9 right-2 w-7 h-7 rounded-full text-white text-sm flex items-center justify-center shadow-md active:scale-95 transition"
-									class:bg-leaf-500={composeIds.has(photo.id)}
-									class:bg-black={!composeIds.has(photo.id)}
-									class:opacity-60={!composeIds.has(photo.id)}
-									aria-label={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
-									title={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
-								>
-									{composeIds.has(photo.id) ? '✓' : '○'}
-								</button>
-								{#if isSuspiciousDate(photo.takenAt)}
-									<div
-										class="absolute top-9 left-2 px-2 py-0.5 rounded bg-amber-500 text-white text-[10px] font-medium pointer-events-none"
-										title="日期看起来不对"
+								<div class="flex items-center gap-2">
+									<button
+										type="button"
+										onclick={(e) => {
+											e.stopPropagation();
+											editPhotoDate(photo);
+										}}
+										class="opacity-80 hover:opacity-100"
+										title="修改日期"
 									>
-										⚠ 日期可疑
-									</div>
-								{/if}
+										✎
+									</button>
+									<button
+										type="button"
+										onclick={(e) => {
+											e.stopPropagation();
+											handleDeletePhoto(photo.id);
+										}}
+										class="opacity-80 hover:opacity-100"
+										aria-label="删除"
+									>
+										✕
+									</button>
+								</div>
 							</div>
+
+							<!-- 拼接图勾选按钮（图片右上角） -->
+							<button
+								type="button"
+								onclick={(e) => {
+									e.stopPropagation();
+									toggleCompose(photo.id);
+								}}
+								class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shadow-md active:scale-95 transition"
+								class:bg-leaf-500={composeIds.has(photo.id)}
+								class:bg-black={!composeIds.has(photo.id)}
+								class:opacity-60={!composeIds.has(photo.id)}
+								aria-label={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
+								title={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
+							>
+								{composeIds.has(photo.id) ? '✓' : '○'}
+							</button>
 						</div>
 					{/each}
 				</div>
