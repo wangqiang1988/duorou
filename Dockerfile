@@ -21,21 +21,15 @@ RUN npm run build
 # ============== 运行阶段 ==============
 FROM nginx:1.27-alpine AS runner
 
-# 健康检查依赖
-RUN apk add --no-cache curl
-
 # 复制构建产物
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# 复制 nginx 配置
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# 用完整 nginx 主配置（自带 events + http + server）覆盖默认配置
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# 移除 nginx 默认配置
-RUN rm -f /etc/nginx/conf.d/default.conf.bak /etc/nginx/http.d/default.conf
-
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -fsS http://localhost/ > /dev/null || exit 1
+# 健康检查（busybox 自带 wget，无需额外装包）
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q -O - http://localhost/ > /dev/null || exit 1
 
 EXPOSE 80
 
