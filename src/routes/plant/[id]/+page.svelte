@@ -18,6 +18,7 @@
 		daysSince,
 		isSuspiciousDate
 	} from '$lib/photo';
+	import { composeTimeline, downloadBlob } from '$lib/compose';
 	import type { Photo, PlantWithStats } from '$lib/types';
 
 	let plant = $state<PlantWithStats | null>(null);
@@ -187,12 +188,18 @@
 		await refresh();
 	}
 
-	function pickCompare(id: string) {
+	function toggleSelect(id: string) {
 		selected = selected.includes(id)
 			? selected.filter((x) => x !== id)
-			: selected.length < 2
-				? [...selected, id]
-				: [selected[1], id];
+			: [...selected, id];
+	}
+
+	function selectAll() {
+		selected = photos.map((p) => p.id);
+	}
+
+	function clearSelection() {
+		selected = [];
 	}
 
 	let selected = $state<string[]>([]);
@@ -200,6 +207,42 @@
 	function goCompare() {
 		if (selected.length !== 2 || !plantId) return;
 		goto(`/plant/${plantId}/compare?a=${selected[0]}&b=${selected[1]}`);
+	}
+
+	let composing = $state(false);
+
+	async function composeSelected() {
+		if (selected.length === 0 || !plant) return;
+		composing = true;
+		try {
+			// 倒序：最新在上
+			const ordered = photos
+				.filter((p) => selected.includes(p.id))
+				.slice()
+				.sort((a, b) => b.takenAt - a.takenAt);
+			const blob = await composeTimeline({
+				plantName: plant.name,
+				photos: ordered.map((p) => ({
+					id: p.id,
+					takenAt: p.takenAt,
+					loadBlob: async () => {
+						const res = await fetch(`/api/photos/${p.id}/blob?v=medium`);
+						return res.blob();
+					}
+				}))
+			});
+			const stamp = formatDay(Date.now()).replace(/-/g, '');
+			const filename = `${plant.name}-成长-${ordered.length}张-${stamp}.png`;
+			downloadBlob(blob, filename);
+			showToast({
+				kind: 'success',
+				text: `已生成 ${ordered.length} 张的拼接图（${(blob.size / 1024).toFixed(0)} KB）`
+			});
+		} catch (err) {
+			showToast({kind: 'error', text: '生成失败：' + (err as Error).message});
+		} finally {
+			composing = false;
+		}
 	}
 
 	const grouped = $derived.by(() => {
@@ -293,26 +336,49 @@
 					<p class="text-xs text-leaf-600/50 mt-1">点击下方按钮拍下第一张</p>
 				</div>
 			{:else}
+				<p class="text-xs text-leaf-600/60 text-center mb-2">
+					点击照片可多选 · 顶部生成拼接图或对比
+				</p>
 				{#if selected.length > 0}
 					<div
-						class="sticky top-[60px] z-[5] bg-leaf-50 border border-leaf-200 rounded-2xl p-3 mb-4 flex items-center justify-between"
+						class="sticky top-[60px] z-[5] bg-leaf-50 border border-leaf-200 rounded-2xl p-3 mb-4"
 					>
-						<div class="text-sm text-leaf-700">
-							已选 {selected.length}/2 张
+						<div class="flex items-center justify-between gap-2 mb-2">
+							<div class="text-sm text-leaf-700">
+								已选 <span class="font-semibold">{selected.length}</span> 张
+							</div>
+							<div class="flex gap-1.5">
+								{#if selected.length < photos.length}
+									<button
+										onclick={selectAll}
+										class="text-xs px-2.5 py-1.5 rounded-full border border-leaf-200 text-leaf-600 active:bg-leaf-100"
+									>
+										全选
+									</button>
+								{/if}
+								<button
+									onclick={clearSelection}
+									class="text-xs px-2.5 py-1.5 rounded-full border border-leaf-200 text-leaf-600 active:bg-leaf-100"
+								>
+									清空
+								</button>
+							</div>
 						</div>
 						<div class="flex gap-2">
 							<button
-								onclick={() => (selected = [])}
-								class="text-xs px-3 py-1.5 rounded-full border border-leaf-200 text-leaf-600"
+								onclick={composeSelected}
+								disabled={composing}
+								class="flex-1 text-xs px-3 py-2 rounded-full bg-leaf-600 text-white font-medium disabled:opacity-50 active:bg-leaf-700"
 							>
-								清空
+								{composing ? '生成中…' : `📥 生成拼接图（${selected.length} 张）`}
 							</button>
 							<button
 								onclick={goCompare}
 								disabled={selected.length !== 2}
-								class="text-xs px-3 py-1.5 rounded-full bg-leaf-600 text-white disabled:opacity-40"
+								class="text-xs px-3 py-2 rounded-full border border-leaf-300 text-leaf-700 disabled:opacity-40 active:bg-leaf-100"
+								title="需要恰好选中 2 张"
 							>
-								对比 →
+								⇆ 对比
 							</button>
 						</div>
 					</div>
@@ -331,11 +397,11 @@
 									class="relative group"
 									role="button"
 									tabindex="0"
-									onclick={() => pickCompare(photo.id)}
+									onclick={() => toggleSelect(photo.id)}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
 											e.preventDefault();
-											pickCompare(photo.id);
+											toggleSelect(photo.id);
 										}
 									}}
 								>
