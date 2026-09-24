@@ -81,15 +81,16 @@
 			<button
 				type="button"
 				onclick={onclose}
-				class="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-lg active:bg-white/30"
+				class="flex items-center gap-1.5 px-3 h-10 rounded-full bg-white/15 active:bg-white/30 text-sm"
 				aria-label="关闭"
 			>
-				✕
+				<span class="text-xl leading-none">✕</span>
+				<span>关闭</span>
 			</button>
 			<div class="text-sm tabular-nums opacity-90">
 				{index + 1} / {photos.length}
 			</div>
-			<div class="w-9 h-9"></div>
+			<div class="w-16"></div>
 		</div>
 
 		<!-- 图片区 -->

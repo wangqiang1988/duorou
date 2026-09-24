@@ -222,28 +222,54 @@
 		goto('/');
 	}
 
-	async function handleEdit() {
+	let editing = $state(false);
+	let editName = $state('');
+	let editSpecies = $state('');
+	let editAcquiredAt = $state('');
+	let editNotes = $state('');
+	let editSaving = $state(false);
+
+	function openEdit() {
+		if (!plant) return;
+		editName = plant.name;
+		editSpecies = plant.species;
+		editNotes = plant.notes;
+		editAcquiredAt = formatDay(plant.acquiredAt);
+		editing = true;
+	}
+
+	async function saveEdit() {
 		if (!plantId || !plant) return;
-		const name = prompt('名字', plant.name);
-		if (name === null) return;
-		const species = prompt('品种', plant.species);
-		if (species === null) return;
-		const notes = prompt('备注', plant.notes);
-		if (notes === null) return;
-		const dateInput = prompt('入手日期 (YYYY-MM-DD)', formatDay(plant.acquiredAt));
-		if (dateInput === null) return;
-		const d = new Date(dateInput + 'T00:00:00');
-		if (isNaN(d.getTime())) {
-			alert('日期格式无效');
+		const trimmedName = editName.trim();
+		if (!trimmedName) {
+			showToast({kind: 'error', text: '名字不能为空'});
 			return;
 		}
-		await updatePlant(plantId, {
-			name: name.trim() || plant.name,
-			species: species.trim(),
-			notes: notes.trim(),
-			acquiredAt: d.getTime()
-		});
-		await refresh();
+		const d = new Date(editAcquiredAt + 'T00:00:00');
+		if (isNaN(d.getTime())) {
+			showToast({kind: 'error', text: '日期格式无效，请用 YYYY-MM-DD'});
+			return;
+		}
+		editSaving = true;
+		try {
+			await updatePlant(plantId, {
+				name: trimmedName,
+				species: editSpecies.trim(),
+				notes: editNotes.trim(),
+				acquiredAt: d.getTime()
+			});
+			editing = false;
+			await refresh();
+			showToast({kind: 'success', text: '已保存'});
+		} catch (err) {
+			showToast({kind: 'error', text: '保存失败：' + (err as Error).message});
+		} finally {
+			editSaving = false;
+		}
+	}
+
+	function cancelEdit() {
+		editing = false;
 	}
 
 	let composing = $state(false);
@@ -326,20 +352,108 @@
 	ontoggle={toggleCompose}
 />
 
+<!-- 编辑植物：底部抽屉 -->
+{#if editing}
+	<button
+		type="button"
+		aria-label="关闭编辑"
+		onclick={cancelEdit}
+		class="fixed inset-0 z-40 bg-black/40"
+	></button>
+
+	<div
+		class="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl pb-safe pt-3 px-4 max-h-[85vh] overflow-y-auto animate-pop-in"
+		role="dialog"
+		aria-modal="true"
+	>
+		<div class="w-10 h-1 bg-leaf-200 rounded-full mx-auto mb-3"></div>
+		<h3 class="text-base font-semibold text-leaf-800 mb-3">编辑植物信息</h3>
+
+		<div class="space-y-3">
+			<label class="block">
+				<span class="text-xs text-leaf-600/70">名字 *</span>
+				<input
+					type="text"
+					bind:value={editName}
+					class="mt-1 w-full px-3 py-2.5 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm"
+					maxlength="40"
+					placeholder="给它起个名字吧"
+				/>
+			</label>
+
+			<label class="block">
+				<span class="text-xs text-leaf-600/70">品种</span>
+				<input
+					type="text"
+					bind:value={editSpecies}
+					class="mt-1 w-full px-3 py-2.5 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm"
+					maxlength="60"
+					placeholder="例：玉露、桃蛋、熊童子"
+				/>
+			</label>
+
+			<label class="block">
+				<span class="text-xs text-leaf-600/70">入手日期</span>
+				<input
+					type="date"
+					bind:value={editAcquiredAt}
+					class="mt-1 w-full px-3 py-2.5 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm"
+				/>
+			</label>
+
+			<label class="block">
+				<span class="text-xs text-leaf-600/70">备注</span>
+				<textarea
+					bind:value={editNotes}
+					class="mt-1 w-full px-3 py-2.5 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm min-h-20 resize-none"
+					maxlength="500"
+					placeholder="来源、养护要点…"
+				></textarea>
+			</label>
+		</div>
+
+		<div class="flex gap-2 mt-5">
+			<button
+				type="button"
+				onclick={cancelEdit}
+				class="flex-1 py-2.5 rounded-full border border-leaf-200 text-leaf-700 text-sm active:bg-leaf-50"
+			>
+				取消
+			</button>
+			<button
+				type="button"
+				onclick={saveEdit}
+				disabled={editSaving}
+				class="flex-1 py-2.5 rounded-full bg-leaf-600 text-white text-sm font-medium active:bg-leaf-700 disabled:opacity-50"
+			>
+				{editSaving ? '保存中…' : '保存'}
+			</button>
+		</div>
+	</div>
+{/if}
+
 <header
 	class="sticky top-0 z-10 bg-soil-50/85 backdrop-blur border-b border-leaf-100 px-4 pt-safe"
 >
 	<div class="max-w-3xl mx-auto flex items-center justify-between py-3 gap-2">
-		<a href="/" class="text-leaf-700 text-sm flex items-center gap-1">‹ 花园</a>
+		<a
+			href="/"
+			class="text-leaf-700 text-sm flex items-center gap-0.5 active:opacity-60"
+			aria-label="返回花园"
+		>
+			<span class="text-lg leading-none">‹</span>
+			<span>花园</span>
+		</a>
 		<h1 class="text-base font-semibold text-leaf-800 truncate flex-1 text-center">
 			{plant?.name ?? ''}
 		</h1>
 		<button
-			onclick={handleEdit}
-			class="text-leaf-700 text-sm px-1"
-			aria-label="编辑"
+			onclick={openEdit}
+			class="flex items-center gap-1 px-3 py-1.5 rounded-full bg-leaf-100 text-leaf-700 text-xs font-medium active:bg-leaf-200"
+			aria-label="编辑植物"
 		>
-			编辑
+			<span>✎</span>
+			<span>编辑</span>
 		</button>
 	</div>
 </header>
@@ -442,21 +556,22 @@
 									class="w-full object-cover"
 									loading="lazy"
 								/>
-								{#if !composeIds.has(photo.id)}
-									<div
-										class="absolute top-9 right-2 w-6 h-6 rounded-full bg-black/55 text-white text-xs flex items-center justify-center pointer-events-none"
-										title="未加入拼接图"
-									>
-										○
-									</div>
-								{:else}
-									<div
-										class="absolute top-9 right-2 w-6 h-6 rounded-full bg-leaf-500 text-white text-xs flex items-center justify-center pointer-events-none"
-										title="将加入拼接图"
-									>
-										✓
-									</div>
-								{/if}
+								<!-- 拼接图勾选按钮（可点击） -->
+								<button
+									type="button"
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleCompose(photo.id);
+									}}
+									class="absolute top-9 right-2 w-7 h-7 rounded-full text-white text-sm flex items-center justify-center shadow-md active:scale-95 transition"
+									class:bg-leaf-500={composeIds.has(photo.id)}
+									class:bg-black={!composeIds.has(photo.id)}
+									class:opacity-60={!composeIds.has(photo.id)}
+									aria-label={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
+									title={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
+								>
+									{composeIds.has(photo.id) ? '✓' : '○'}
+								</button>
 								{#if isSuspiciousDate(photo.takenAt)}
 									<div
 										class="absolute top-9 left-2 px-2 py-0.5 rounded bg-amber-500 text-white text-[10px] font-medium pointer-events-none"
