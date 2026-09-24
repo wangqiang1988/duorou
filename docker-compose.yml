@@ -1,11 +1,10 @@
 # 多肉成长记 · docker-compose
-# 启动：docker-compose up -d --build
-# 启动开发模式（vite 热重载）：docker-compose --profile dev up dev
+# 推荐用 docker compose v2（compose-plugin）：`docker compose up -d --build`
+# 旧版 v1（docker-compose）也可能能跑，但遇到 KeyError: 'ContainerConfig' 请升级
 
 version: "3.8"
 
 services:
-  # 后端 API（Fastify + SQLite + 文件存储）
   api:
     build:
       context: ./api
@@ -19,7 +18,6 @@ services:
       - PORT=3011
       - HOST=0.0.0.0
     volumes:
-      # 持久化数据（照片 + sqlite）
       - ./data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3011/api/health"]
@@ -30,7 +28,6 @@ services:
     networks:
       - duorou-net
 
-  # 前端（nginx 静态托管）
   app:
     build:
       context: .
@@ -39,8 +36,7 @@ services:
     container_name: duorou
     restart: unless-stopped
     depends_on:
-      api:
-        condition: service_started
+      - api
     ports:
       - "${DUOROU_HTTP_PORT:-8080}:80"
     healthcheck:
@@ -52,19 +48,19 @@ services:
     networks:
       - duorou-net
 
-  # 开发模式（可选）：docker-compose --profile dev up dev
   dev:
     image: node:20-alpine
     container_name: duorou-dev
     working_dir: /app
     volumes:
       - .:/app
-      - dev_node_modules:/app/node_modules
-      - api_node_modules:/app/api/node_modules
+      - /app/node_modules
+      - /app/api/node_modules
     command: sh -c "
-          cd /app/api && npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund && cd /app && npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund &&
-          cd /app/api && npm run dev & npm run dev -- --host 0.0.0.0 && wait
-        "
+        cd /app/api && npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund
+        cd /app && npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund
+        cd /app/api && npm run dev & npm run dev -- --host 0.0.0.0 && wait
+      "
     ports:
       - "${DUOROU_DEV_PORT:-5173}:5173"
       - "${DUOROU_API_PORT:-3011}:3011"
@@ -76,7 +72,3 @@ services:
 networks:
   duorou-net:
     driver: bridge
-
-volumes:
-  dev_node_modules:
-  api_node_modules:
