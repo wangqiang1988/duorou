@@ -9,7 +9,6 @@ dist
 .dockerignore
 Dockerfile
 docker-compose*.yml
-nginx.conf
 
 # 测试 / 调试
 _test-*.mjs
