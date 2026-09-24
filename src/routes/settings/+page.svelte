@@ -103,9 +103,25 @@
 		</section>
 
 		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
+			<h2 class="text-sm font-medium text-leaf-800 mb-2">多设备同步</h2>
+			<p class="text-xs text-leaf-600/70 leading-relaxed mb-2">
+				数据存在浏览器 IndexedDB 里，<b>不同设备/浏览器互相看不到</b>。
+				手机拍完后想同步到电脑或另一台设备：
+			</p>
+			<ol class="text-xs text-leaf-700/80 leading-relaxed space-y-1 pl-4 list-decimal">
+				<li>手机上点「导出备份」，把 ZIP 发到电脑</li>
+				<li>电脑上打开页面，点「导入备份」选那个 ZIP</li>
+				<li>同 ID 的植物/照片会自动跳过（不会重复）</li>
+			</ol>
+			<p class="text-[11px] text-leaf-600/50 mt-2 leading-relaxed">
+				未来会增加云端自动同步（需要账号 + 后端）。
+			</p>
+		</section>
+
+		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
 			<h2 class="text-sm font-medium text-leaf-800 mb-1">关于</h2>
 			<p class="text-xs text-leaf-600/70 leading-relaxed">
-				多肉成长记 v0.1 · 数据完全保存在你的设备本地 ·
+				多肉成长记 v0.2 · 数据完全保存在你的设备本地 ·
 				本应用不会上传任何数据到服务器
 			</p>
 		</section>

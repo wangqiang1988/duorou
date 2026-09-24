@@ -5,20 +5,50 @@ import type { Photo } from './types';
 const THUMB_MAX = 320;
 const MEDIUM_MAX = 1280;
 
-export async function readTakenAt(file: File): Promise<number> {
+export type TakenAtSource = 'exif' | 'file' | 'now';
+
+export interface TakenAtResult {
+	takenAt: number;
+	source: TakenAtSource;
+	sourceField?: string;
+}
+
+export async function readTakenAt(file: File): Promise<TakenAtResult> {
 	try {
-		const data = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']);
-		const date: Date | string | undefined =
-			(data?.DateTimeOriginal as Date | string | undefined) ??
-			(data?.CreateDate as Date | string | undefined);
-		if (date) {
-			const d = date instanceof Date ? date : new Date(date);
-			if (!isNaN(d.getTime())) return d.getTime();
+		const data = await exifr.parse(file, [
+			'DateTimeOriginal',
+			'CreateDate',
+			'ModifyDate'
+		]);
+		const fields: Array<['DateTimeOriginal' | 'CreateDate' | 'ModifyDate', string]> = [
+			['DateTimeOriginal', 'DateTimeOriginal'],
+			['CreateDate', 'CreateDate'],
+			['ModifyDate', 'ModifyDate']
+		];
+		for (const [key, label] of fields) {
+			const raw = data?.[key] as Date | string | undefined;
+			if (!raw) continue;
+			const d = raw instanceof Date ? raw : new Date(raw);
+			if (!isNaN(d.getTime())) {
+				return { takenAt: d.getTime(), source: 'exif', sourceField: label };
+			}
 		}
 	} catch {
 		/* EXIF 读取失败就用 fallback */
 	}
-	return file.lastModified || Date.now();
+	if (file.lastModified) {
+		return { takenAt: file.lastModified, source: 'file' };
+	}
+	return { takenAt: Date.now(), source: 'now' };
+}
+
+export function isSuspiciousDate(ts: number): boolean {
+	const now = Date.now();
+	const oneDay = 86400000;
+	// 未来 1 天以上，或 10 年以前
+	if (ts > now + oneDay) return true;
+	if (ts < now - 3650 * oneDay) return true;
+	return false;
 }
 
 async function fileToImageBitmap(file: File): Promise<ImageBitmap> {
@@ -65,13 +95,15 @@ export interface ProcessedPhoto {
 	thumb: Blob;
 	medium: Blob;
 	original: Blob;
+	dateSource: TakenAtSource;
 }
 
 export async function processPhotoFile(
 	file: File,
 	defaultTakenAt?: number
 ): Promise<ProcessedPhoto> {
-	const takenAt = defaultTakenAt ?? (await readTakenAt(file));
+	const result = await readTakenAt(file);
+	const takenAt = defaultTakenAt ?? result.takenAt;
 	const mime = file.type.startsWith('image/') ? file.type : 'image/jpeg';
 
 	const bitmap = await fileToImageBitmap(file);
@@ -87,7 +119,8 @@ export async function processPhotoFile(
 		mime,
 		thumb: thumb.blob,
 		medium: medium.blob,
-		original: file
+		original: file,
+		dateSource: defaultTakenAt ? 'now' : result.source
 	};
 }
 
@@ -107,7 +140,8 @@ export async function processPhotoForPlant(
 		mime: p.mime,
 		thumb: p.thumb,
 		medium: p.medium,
-		original: p.original
+		original: p.original,
+		dateSource: p.dateSource
 	};
 }
 

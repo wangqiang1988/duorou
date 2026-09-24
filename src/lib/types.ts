@@ -21,6 +21,7 @@ export interface Photo {
 	thumb: Blob;
 	medium: Blob;
 	original: Blob;
+	dateSource?: 'exif' | 'file' | 'now';
 }
 
 export type PhotoBlobKey = 'thumb' | 'medium' | 'original';

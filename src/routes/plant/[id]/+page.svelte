@@ -8,9 +8,16 @@
 		deletePlant,
 		loadPhotos,
 		addPhoto,
-		deletePhoto
+		deletePhoto,
+		updatePhoto
 	} from '$lib/repo.svelte';
-	import { processPhotoForPlant, formatMonth, formatDay, daysSince } from '$lib/photo';
+	import {
+		processPhotoForPlant,
+		formatMonth,
+		formatDay,
+		daysSince,
+		isSuspiciousDate
+	} from '$lib/photo';
 	import type { Photo, Plant } from '$lib/types';
 
 	let plant = $state<Plant | null>(null);
@@ -55,29 +62,106 @@
 		return () => revokeAll();
 	});
 
-	let fileRef = $state<HTMLInputElement | null>(null);
+	let cameraRef = $state<HTMLInputElement | null>(null);
+	let galleryRef = $state<HTMLInputElement | null>(null);
 	let uploading = $state(false);
+	let menuOpen = $state(false);
+	type Toast =
+		| { kind: 'success'; text: string }
+		| { kind: 'warn'; text: string }
+		| { kind: 'error'; text: string }
+		| null;
+	let toast = $state<Toast>(null);
+	let toastTimer: number | undefined;
 
-	function openCamera() {
-		fileRef?.click();
+	function showToast(t: Toast, ms = 3200) {
+		toast = t;
+		if (toastTimer) clearTimeout(toastTimer);
+		toastTimer = window.setTimeout(() => (toast = null), ms);
 	}
 
-	async function handleFiles(e: Event) {
+	function openMenu() {
+		menuOpen = !menuOpen;
+	}
+	function closeMenu() {
+		menuOpen = false;
+	}
+
+	function pickCamera() {
+		closeMenu();
+		cameraRef?.click();
+	}
+	function pickGallery() {
+		closeMenu();
+		galleryRef?.click();
+	}
+
+	async function handleFiles(e: Event, source: 'camera' | 'gallery') {
 		if (!plantId) return;
 		const input = e.target as HTMLInputElement;
 		const files = Array.from(input.files ?? []);
+		input.value = '';
 		if (files.length === 0) return;
+
 		uploading = true;
+		let exifCount = 0;
+		let fileCount = 0;
+		let nowCount = 0;
 		try {
 			for (const file of files) {
 				const photo = await processPhotoForPlant(file, plantId);
+				if (photo.dateSource === 'exif') exifCount++;
+				else if (photo.dateSource === 'file') fileCount++;
+				else nowCount++;
 				await addPhoto(photo);
 			}
-			input.value = '';
 			await refresh();
+
+			const parts: string[] = [`已添加 ${files.length} 张`];
+			const detail: string[] = [];
+			if (exifCount) detail.push(`${exifCount} 张读取了拍摄日期`);
+			if (fileCount) detail.push(`${fileCount} 张用了文件时间`);
+			if (nowCount) detail.push(`${nowCount} 张用当前时间`);
+			if (detail.length) parts.push(`（${detail.join('，')}）`);
+			showToast({ kind: 'success', text: parts.join('') });
+
+			const suspicious = photos.filter((p) => isSuspiciousDate(p.takenAt));
+			if (suspicious.length > 0 && files.length > 0) {
+				showToast(
+					{
+						kind: 'warn',
+						text: `有 ${suspicious.length} 张照片日期看起来不对（未来或很久以前），可点照片日期修正`
+					},
+					5000
+				);
+			}
+		} catch (err) {
+			showToast({ kind: 'error', text: '导入失败：' + (err as Error).message });
 		} finally {
 			uploading = false;
 		}
+	}
+
+	async function editPhotoDate(photo: Photo) {
+		const current = formatDay(photo.takenAt);
+		const input = prompt(
+			`修改照片日期（YYYY-MM-DD）\n当前：${current}\n来源：${
+				photo.dateSource === 'exif'
+					? 'EXIF 拍摄日期'
+					: photo.dateSource === 'file'
+						? '文件修改时间'
+						: '当前时间'
+			}`,
+			current
+		);
+		if (input === null) return;
+		const d = new Date(input + 'T12:00:00');
+		if (isNaN(d.getTime())) {
+			alert('日期格式无效，请用 YYYY-MM-DD');
+			return;
+		}
+		await updatePhoto(photo.id, { takenAt: d.getTime() });
+		await refresh();
 	}
 
 	async function handleDeletePhoto(id: string) {
@@ -135,13 +219,22 @@
 	});
 </script>
 
+<!-- 拍照：iOS 上 capture 强制相机；Android 上选择相机 -->
 <input
+	bind:this={cameraRef}
 	type="file"
 	accept="image/*"
 	capture="environment"
+	onchange={(e) => handleFiles(e, 'camera')}
+	class="hidden"
+/>
+<!-- 相册：不带 capture，多选；iOS / Android 都会弹相册选择 -->
+<input
+	bind:this={galleryRef}
+	type="file"
+	accept="image/*"
 	multiple
-	bind:this={fileRef}
-	onchange={handleFiles}
+	onchange={(e) => handleFiles(e, 'gallery')}
 	class="hidden"
 />
 
@@ -238,10 +331,19 @@
 						</h2>
 						<div class="grid grid-cols-3 gap-1.5">
 							{#each list as photo (photo.id)}
-								<div class="relative group">
-									<button
-										type="button"
-										onclick={() => pickCompare(photo.id)}
+								<div
+									class="relative group"
+									role="button"
+									tabindex="0"
+									onclick={() => pickCompare(photo.id)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											pickCompare(photo.id);
+										}
+									}}
+								>
+									<div
 										class="block w-full aspect-square overflow-hidden rounded-lg bg-leaf-50 relative"
 										class:ring-2={selected.includes(photo.id)}
 										class:ring-leaf-500={selected.includes(photo.id)}
@@ -252,26 +354,43 @@
 											class="w-full h-full object-cover"
 											loading="lazy"
 										/>
-										<div
-											class="absolute bottom-1 left-1 right-1 text-[10px] text-white bg-black/45 px-1.5 py-0.5 rounded backdrop-blur-sm"
+										<button
+											type="button"
+											onclick={(e) => {
+												e.stopPropagation();
+												editPhotoDate(photo);
+											}}
+											class="absolute bottom-1 left-1 right-1 text-[10px] text-white bg-black/55 px-1.5 py-0.5 rounded backdrop-blur-sm text-left hover:bg-black/75"
+											title="点击修改日期"
 										>
 											{formatDay(photo.takenAt)}
-										</div>
+											{#if photo.dateSource === 'exif'}
+												<span class="opacity-60">·EXIF</span>
+											{/if}
+										</button>
+										{#if isSuspiciousDate(photo.takenAt)}
+											<div
+												class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-medium pointer-events-none"
+												title="日期看起来不对"
+											>
+												⚠
+											</div>
+										{/if}
 										{#if selected.includes(photo.id)}
 											<div
-												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-leaf-500 text-white text-xs flex items-center justify-center"
+												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-leaf-500 text-white text-xs flex items-center justify-center pointer-events-none"
 											>
 												{selected.indexOf(photo.id) + 1}
 											</div>
 										{/if}
-									</button>
+									</div>
 									<button
 										type="button"
 										onclick={(e) => {
 											e.stopPropagation();
 											handleDeletePhoto(photo.id);
 										}}
-										class="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] opacity-0 group-hover:opacity-100 flex items-center justify-center"
+										class="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] opacity-0 group-hover:opacity-100 flex items-center justify-center"
 										aria-label="删除"
 									>
 										✕
@@ -287,12 +406,63 @@
 </main>
 
 {#if plant}
-	<button
-		onclick={openCamera}
-		disabled={uploading}
-		aria-label="拍照"
-		class="fixed bottom-6 right-6 z-20 w-14 h-14 rounded-full bg-leaf-600 text-white text-2xl shadow-lg shadow-leaf-700/30 active:scale-95 transition flex items-center justify-center disabled:opacity-60"
-	>
-		{uploading ? '…' : '📷'}
-	</button>
+	<div class="fixed bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+		{#if menuOpen}
+			<div
+				class="bg-white rounded-2xl shadow-xl shadow-leaf-900/15 border border-leaf-100 overflow-hidden animate-pop-in"
+			>
+				<button
+					type="button"
+					onclick={pickCamera}
+					disabled={uploading}
+					class="flex items-center gap-3 px-4 py-3 w-full text-left text-sm text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100 disabled:opacity-50"
+				>
+					<span class="text-xl">📷</span>
+					<div>
+						<div class="font-medium">拍一张</div>
+						<div class="text-[11px] text-leaf-600/60">调起相机</div>
+					</div>
+				</button>
+				<div class="border-t border-leaf-100"></div>
+				<button
+					type="button"
+					onclick={pickGallery}
+					disabled={uploading}
+					class="flex items-center gap-3 px-4 py-3 w-full text-left text-sm text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100 disabled:opacity-50"
+				>
+					<span class="text-xl">🖼️</span>
+					<div>
+						<div class="font-medium">从相册选</div>
+						<div class="text-[11px] text-leaf-600/60">可多选</div>
+					</div>
+				</button>
+			</div>
+		{/if}
+
+		<button
+			onclick={openMenu}
+			disabled={uploading}
+			aria-label="添加照片"
+			aria-expanded={menuOpen}
+			class="w-14 h-14 rounded-full bg-leaf-600 text-white text-2xl shadow-lg shadow-leaf-700/30 active:scale-95 transition flex items-center justify-center disabled:opacity-60"
+			class:rotate-45={menuOpen}
+			style="transition: transform 0.18s;"
+		>
+			{uploading ? '…' : '+'}
+		</button>
+	</div>
+
+	{#if toast}
+		<div
+			class="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 max-w-sm px-4 py-2.5 rounded-2xl shadow-lg text-sm animate-pop-in"
+			class:bg-white={toast.kind === 'success'}
+			class:text-leaf-800={toast.kind === 'success'}
+			class:bg-amber-50={toast.kind === 'warn'}
+			class:text-amber-800={toast.kind === 'warn'}
+			class:bg-red-50={toast.kind === 'error'}
+			class:text-red-700={toast.kind === 'error'}
+		>
+			{toast.text}
+		</div>
+	{/if}
 {/if}
