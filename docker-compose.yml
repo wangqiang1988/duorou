@@ -1,0 +1,47 @@
+# 多肉成长记 · docker-compose
+# 启动生产服务（nginx 托管静态构建）：docker-compose up -d
+# 启动开发模式（vite dev + 热重载）：docker-compose --profile dev up dev
+
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: duorou:latest
+    container_name: duorou
+    restart: unless-stopped
+    ports:
+      - "${DUOROU_HTTP_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - duorou-net
+
+  # 开发模式（可选）：docker-compose --profile dev up dev
+  dev:
+    image: node:20-alpine
+    container_name: duorou-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - dev_node_modules:/app/node_modules
+    command: sh -c "npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "${DUOROU_DEV_PORT:-5173}:5173"
+    profiles:
+      - dev
+    networks:
+      - duorou-net
+
+networks:
+  duorou-net:
+    driver: bridge
+
+volumes:
+  dev_node_modules:

@@ -1,0 +1,16 @@
+# 构建产物 / 缓存 / 测试
+node_modules
+.svelte-kit
+build
+dist
+*.log
+.git
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yml
+nginx.conf
+
+# 测试 / 调试
+_test-*.mjs
+_*.py
