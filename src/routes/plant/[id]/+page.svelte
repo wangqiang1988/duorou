@@ -160,14 +160,47 @@
 	}
 
 	async function handleDeletePhoto(id: string) {
-		if (!confirm('删除这张照片？')) return;
+		const photo = photos.find((p) => p.id === id);
+		const dateLabel = photo ? formatDay(photo.takenAt) : '';
+		if (!confirm(`删除 ${dateLabel} 的这张照片？此操作无法撤销。`)) return;
+		if (!confirm('确认删除？')) return;
 		await deletePhoto(id, plantId);
 		await refresh();
 	}
 
+	async function deleteSelectedPhotos() {
+		if (selected.length === 0) return;
+		const ids = [...selected];
+		if (
+			!confirm(
+				`确定删除选中的 ${ids.length} 张照片？此操作无法撤销。`
+			)
+		)
+			return;
+		if (!confirm('真的要删除吗？删除后无法恢复。')) return;
+		for (const id of ids) {
+			await deletePhoto(id, plantId);
+			selected = selected.filter((x) => x !== id);
+		}
+		await refresh();
+		showToast({kind: 'success', text: `已删除 ${ids.length} 张照片`});
+	}
+
 	async function handleDeletePlant() {
-		if (!plantId) return;
-		if (!confirm(`确定删除「${plant?.name}」？相关照片会一并删除。`)) return;
+		if (!plantId || !plant) return;
+		const photoCount = plant.photoCount;
+		if (
+			!confirm(
+				`确定删除「${plant.name}」？\n\n这会同时删除 ${photoCount} 张照片，此操作无法撤销。`
+			)
+		)
+			return;
+		if (
+			!confirm(
+				`最后确认：删除「${plant.name}」及其全部 ${photoCount} 张照片？\n\n真的要继续吗？`
+			)
+		)
+			return;
 		await deletePlant(plantId);
 		goto('/');
 	}
@@ -386,6 +419,13 @@
 								title="需要恰好选中 2 张"
 							>
 								⇆ 对比
+							</button>
+							<button
+								onclick={deleteSelectedPhotos}
+								class="text-xs px-3 py-2 rounded-full border border-red-200 text-red-600 active:bg-red-50"
+								title="删除选中的照片"
+							>
+								🗑
 							</button>
 						</div>
 					</div>
