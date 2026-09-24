@@ -14,9 +14,9 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 		const plantId = req.query.plantId;
 		const rows = plantId
 			? (db
-					.prepare('SELECT * FROM photos WHERE plant_id = ? ORDER BY taken_at ASC')
+					.prepare('SELECT * FROM photos WHERE plant_id = ? ORDER BY taken_at DESC')
 					.all(plantId) as PhotoRow[])
-			: (db.prepare('SELECT * FROM photos ORDER BY taken_at ASC').all() as PhotoRow[]);
+			: (db.prepare('SELECT * FROM photos ORDER BY taken_at DESC').all() as PhotoRow[]);
 		return rows.map(rowToPhoto);
 	});
 

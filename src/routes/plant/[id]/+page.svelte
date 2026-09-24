@@ -291,15 +291,9 @@
 		}
 	}
 
-	const grouped = $derived.by(() => {
-		const map = new Map<string, Photo[]>();
-		for (const p of photos) {
-			const key = formatMonth(p.takenAt);
-			if (!map.has(key)) map.set(key, []);
-			map.get(key)!.push(p);
-		}
-		return Array.from(map.entries());
-	});
+	const sortedPhotos = $derived(
+		photos.slice().sort((a, b) => b.takenAt - a.takenAt)
+	);
 
 	function blobUrl(id: string, v: 'thumb' | 'medium' | 'orig' = 'medium') {
 		return `/api/photos/${id}/blob?v=${v}`;
@@ -391,92 +385,90 @@
 					<p class="text-xs text-leaf-600/50 mt-1">点击下方按钮拍下第一张</p>
 				</div>
 			{:else}
-				<p class="text-xs text-leaf-600/60 text-center mb-2">
-					点击照片浏览大图 · 底部可一键生成成长长图
+				<p class="text-xs text-leaf-600/60 text-center mb-3">
+					时间倒序 · 点击照片浏览大图 · 底部生成成长长图
 				</p>
-				{#each grouped as [month, list] (month)}
-					<div class="mb-6">
-						<h2
-							class="sticky top-[57px] z-[4] bg-soil-50/90 backdrop-blur-sm text-sm font-medium text-leaf-700 py-2 -mx-1 px-1"
-						>
-							{month}
-						</h2>
-						<div class="grid grid-cols-3 gap-1.5">
-							{#each list as photo, idx (photo.id)}
-								{@const globalIdx = photos.findIndex((p) => p.id === photo.id)}
-								<div class="relative group">
-									<div
-										class="block w-full aspect-square overflow-hidden rounded-lg bg-leaf-50 relative"
-										role="button"
-										tabindex="0"
-										onclick={() => openLightbox(globalIdx)}
-										onkeydown={(e) => {
-											if (e.key === 'Enter' || e.key === ' ') {
-												e.preventDefault();
-												openLightbox(globalIdx);
-											}
-										}}
-									>
-										<img
-											src={blobUrl(photo.id, 'medium')}
-											alt=""
-											class="w-full h-full object-cover"
-											loading="lazy"
-										/>
+				<div class="flex flex-col gap-3">
+					{#each sortedPhotos as photo (photo.id)}
+						{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
+						<div class="relative group">
+							<div
+								class="block w-full overflow-hidden rounded-2xl bg-leaf-50 relative shadow-sm shadow-leaf-900/5"
+								role="button"
+								tabindex="0"
+								onclick={() => openLightbox(globalIdx)}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										openLightbox(globalIdx);
+									}
+								}}
+							>
+								<div class="flex items-center justify-between px-3 pt-2 pb-1.5 text-xs text-leaf-700">
+									<div class="flex items-center gap-2">
+										<span class="font-medium">{formatDay(photo.takenAt)}</span>
+										{#if photo.dateSource === 'exif'}
+											<span class="text-[10px] text-leaf-600/60 bg-leaf-50 px-1.5 py-0.5 rounded">EXIF</span>
+										{/if}
+									</div>
+									<div class="flex items-center gap-2">
 										<button
 											type="button"
 											onclick={(e) => {
 												e.stopPropagation();
 												editPhotoDate(photo);
 											}}
-											class="absolute bottom-1 left-1 right-1 text-[10px] text-white bg-black/55 px-1.5 py-0.5 rounded backdrop-blur-sm text-left hover:bg-black/75"
-											title="点击修改日期"
+											class="text-leaf-600/70 hover:text-leaf-700"
+											title="修改日期"
 										>
-											{formatDay(photo.takenAt)}
-											{#if photo.dateSource === 'exif'}
-												<span class="opacity-60">·EXIF</span>
-											{/if}
+											✎
 										</button>
-										{#if isSuspiciousDate(photo.takenAt)}
-											<div
-												class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-medium pointer-events-none"
-												title="日期看起来不对"
-											>
-												⚠
-											</div>
-										{/if}
-										{#if !composeIds.has(photo.id)}
-											<div
-												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] flex items-center justify-center pointer-events-none"
-												title="未加入拼接图"
-											>
-												○
-											</div>
-										{:else}
-											<div
-												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-leaf-500 text-white text-[10px] flex items-center justify-center pointer-events-none"
-												title="将加入拼接图"
-											>
-												✓
-											</div>
-										{/if}
+										<button
+											type="button"
+											onclick={(e) => {
+												e.stopPropagation();
+												handleDeletePhoto(photo.id);
+											}}
+											class="text-red-500/70 hover:text-red-600"
+											aria-label="删除"
+										>
+											✕
+										</button>
 									</div>
-									<button
-										type="button"
-										onclick={(e) => {
-											e.stopPropagation();
-											handleDeletePhoto(photo.id);
-										}}
-										class="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] opacity-0 group-hover:opacity-100 flex items-center justify-center"
-										aria-label="删除"
-									>
-										✕
-									</button>
 								</div>
-							{/each}
+								<img
+									src={blobUrl(photo.id, 'medium')}
+									alt=""
+									class="w-full object-cover"
+									loading="lazy"
+								/>
+								{#if !composeIds.has(photo.id)}
+									<div
+										class="absolute top-9 right-2 w-6 h-6 rounded-full bg-black/55 text-white text-xs flex items-center justify-center pointer-events-none"
+										title="未加入拼接图"
+									>
+										○
+									</div>
+								{:else}
+									<div
+										class="absolute top-9 right-2 w-6 h-6 rounded-full bg-leaf-500 text-white text-xs flex items-center justify-center pointer-events-none"
+										title="将加入拼接图"
+									>
+										✓
+									</div>
+								{/if}
+								{#if isSuspiciousDate(photo.takenAt)}
+									<div
+										class="absolute top-9 left-2 px-2 py-0.5 rounded bg-amber-500 text-white text-[10px] font-medium pointer-events-none"
+										title="日期看起来不对"
+									>
+										⚠ 日期可疑
+									</div>
+								{/if}
+							</div>
 						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			{/if}
 		</section>
 	{/if}
