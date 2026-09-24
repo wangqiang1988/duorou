@@ -19,6 +19,7 @@
 		isSuspiciousDate
 	} from '$lib/photo';
 	import { composeTimeline, saveImage } from '$lib/compose';
+	import Lightbox from '$lib/components/Lightbox.svelte';
 	import type { Photo, PlantWithStats } from '$lib/types';
 
 	let plant = $state<PlantWithStats | null>(null);
@@ -26,6 +27,34 @@
 	let loading = $state(true);
 
 	const plantId = $derived($page.params.id ?? '');
+
+	// Lightbox
+	let lightboxOpen = $state(false);
+	let lightboxStart = $state(0);
+	let composeIds = $state<Set<string>>(new Set());
+
+	$effect(() => {
+		// 默认勾选所有照片
+		if (photos.length > 0 && composeIds.size === 0) {
+			composeIds = new Set(photos.map((p) => p.id));
+		}
+	});
+
+	function openLightbox(idx: number) {
+		lightboxStart = idx;
+		lightboxOpen = true;
+	}
+
+	function closeLightbox() {
+		lightboxOpen = false;
+	}
+
+	function toggleCompose(id: string) {
+		const next = new Set(composeIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		composeIds = next;
+	}
 
 	onMount(async () => {
 		if (!plantId) {
@@ -45,6 +74,11 @@
 		}
 		plant = p;
 		photos = await loadPhotos(plantId);
+		// 同步：删除的也从勾选集合移除
+		const ids = new Set(photos.map((p) => p.id));
+		for (const id of composeIds) {
+			if (!ids.has(id)) composeIds.delete(id);
+		}
 	}
 
 	let cameraRef = $state<HTMLInputElement | null>(null);
@@ -52,9 +86,9 @@
 	let uploading = $state(false);
 	let menuOpen = $state(false);
 	type Toast =
-		| { kind: 'success'; text: string }
-		| { kind: 'warn'; text: string }
-		| { kind: 'error'; text: string }
+		| {kind: 'success'; text: string}
+		| {kind: 'warn'; text: string}
+		| {kind: 'error'; text: string}
 		| null;
 	let toast = $state<Toast>(null);
 	let toastTimer: number | undefined;
@@ -118,7 +152,7 @@
 			if (fileCount) detail.push(`${fileCount} 张用了文件时间`);
 			if (nowCount) detail.push(`${nowCount} 张用当前时间`);
 			if (detail.length) parts.push(`（${detail.join('，')}）`);
-			showToast({ kind: 'success', text: parts.join('') });
+			showToast({kind: 'success', text: parts.join('')});
 
 			const suspicious = photos.filter((p) => isSuspiciousDate(p.takenAt));
 			if (suspicious.length > 0) {
@@ -131,7 +165,7 @@
 				);
 			}
 		} catch (err) {
-			showToast({ kind: 'error', text: '导入失败：' + (err as Error).message });
+			showToast({kind: 'error', text: '导入失败：' + (err as Error).message});
 		} finally {
 			uploading = false;
 		}
@@ -155,7 +189,7 @@
 			alert('日期格式无效，请用 YYYY-MM-DD');
 			return;
 		}
-		await updatePhoto(photo.id, plantId, { takenAt: d.getTime() });
+		await updatePhoto(photo.id, plantId, {takenAt: d.getTime()});
 		await refresh();
 	}
 
@@ -165,25 +199,8 @@
 		if (!confirm(`删除 ${dateLabel} 的这张照片？此操作无法撤销。`)) return;
 		if (!confirm('确认删除？')) return;
 		await deletePhoto(id, plantId);
+		composeIds.delete(id);
 		await refresh();
-	}
-
-	async function deleteSelectedPhotos() {
-		if (selected.length === 0) return;
-		const ids = [...selected];
-		if (
-			!confirm(
-				`确定删除选中的 ${ids.length} 张照片？此操作无法撤销。`
-			)
-		)
-			return;
-		if (!confirm('真的要删除吗？删除后无法恢复。')) return;
-		for (const id of ids) {
-			await deletePhoto(id, plantId);
-			selected = selected.filter((x) => x !== id);
-		}
-		await refresh();
-		showToast({kind: 'success', text: `已删除 ${ids.length} 张照片`});
 	}
 
 	async function handleDeletePlant() {
@@ -213,44 +230,33 @@
 		if (species === null) return;
 		const notes = prompt('备注', plant.notes);
 		if (notes === null) return;
+		const dateInput = prompt('入手日期 (YYYY-MM-DD)', formatDay(plant.acquiredAt));
+		if (dateInput === null) return;
+		const d = new Date(dateInput + 'T00:00:00');
+		if (isNaN(d.getTime())) {
+			alert('日期格式无效');
+			return;
+		}
 		await updatePlant(plantId, {
 			name: name.trim() || plant.name,
 			species: species.trim(),
-			notes: notes.trim()
+			notes: notes.trim(),
+			acquiredAt: d.getTime()
 		});
 		await refresh();
-	}
-
-	function toggleSelect(id: string) {
-		selected = selected.includes(id)
-			? selected.filter((x) => x !== id)
-			: [...selected, id];
-	}
-
-	function selectAll() {
-		selected = photos.map((p) => p.id);
-	}
-
-	function clearSelection() {
-		selected = [];
-	}
-
-	let selected = $state<string[]>([]);
-
-	function goCompare() {
-		if (selected.length !== 2 || !plantId) return;
-		goto(`/plant/${plantId}/compare?a=${selected[0]}&b=${selected[1]}`);
 	}
 
 	let composing = $state(false);
 
 	async function composeSelected() {
-		if (selected.length === 0 || !plant) return;
+		if (composeIds.size === 0 || !plant) {
+			showToast({kind: 'warn', text: '请至少选 1 张照片'});
+			return;
+		}
 		composing = true;
 		try {
-			// 倒序：最新在上
 			const ordered = photos
-				.filter((p) => selected.includes(p.id))
+				.filter((p) => composeIds.has(p.id))
 				.slice()
 				.sort((a, b) => b.takenAt - a.takenAt);
 			const blob = await composeTimeline({
@@ -270,12 +276,12 @@
 			if (result === 'shared') {
 				showToast({
 					kind: 'success',
-					text: `已生成 ${ordered.length} 张（${(blob.size / 1024).toFixed(0)} KB），请在弹出的菜单选"存储图像"保存到相册`
+					text: `已生成 ${ordered.length} 张（${(blob.size / 1024).toFixed(0)} KB），请选"存储图像"保存到相册`
 				});
 			} else {
 				showToast({
 					kind: 'success',
-					text: `已生成 ${ordered.length} 张（${(blob.size / 1024).toFixed(0)} KB），已下载到下载文件夹`
+					text: `已生成 ${ordered.length} 张（${(blob.size / 1024).toFixed(0)} KB），已下载`
 				});
 			}
 		} catch (err) {
@@ -315,6 +321,15 @@
 	multiple
 	onchange={handleFiles}
 	class="hidden"
+/>
+
+<Lightbox
+	{photos}
+	startIndex={lightboxStart}
+	selectedIds={composeIds}
+	open={lightboxOpen}
+	onclose={closeLightbox}
+	ontoggle={toggleCompose}
 />
 
 <header
@@ -377,85 +392,30 @@
 				</div>
 			{:else}
 				<p class="text-xs text-leaf-600/60 text-center mb-2">
-					点击照片可多选 · 顶部生成拼接图或对比
+					点击照片浏览大图 · 底部可一键生成成长长图
 				</p>
-				{#if selected.length > 0}
-					<div
-						class="sticky top-[60px] z-[5] bg-leaf-50 border border-leaf-200 rounded-2xl p-3 mb-4"
-					>
-						<div class="flex items-center justify-between gap-2 mb-2">
-							<div class="text-sm text-leaf-700">
-								已选 <span class="font-semibold">{selected.length}</span> 张
-							</div>
-							<div class="flex gap-1.5">
-								{#if selected.length < photos.length}
-									<button
-										onclick={selectAll}
-										class="text-xs px-2.5 py-1.5 rounded-full border border-leaf-200 text-leaf-600 active:bg-leaf-100"
-									>
-										全选
-									</button>
-								{/if}
-								<button
-									onclick={clearSelection}
-									class="text-xs px-2.5 py-1.5 rounded-full border border-leaf-200 text-leaf-600 active:bg-leaf-100"
-								>
-									清空
-								</button>
-							</div>
-						</div>
-						<div class="flex gap-2">
-							<button
-								onclick={composeSelected}
-								disabled={composing}
-								class="flex-1 text-xs px-3 py-2 rounded-full bg-leaf-600 text-white font-medium disabled:opacity-50 active:bg-leaf-700"
-							>
-								{composing ? '生成中…' : `📥 生成拼接图（${selected.length} 张）`}
-							</button>
-							<button
-								onclick={goCompare}
-								disabled={selected.length !== 2}
-								class="text-xs px-3 py-2 rounded-full border border-leaf-300 text-leaf-700 disabled:opacity-40 active:bg-leaf-100"
-								title="需要恰好选中 2 张"
-							>
-								⇆ 对比
-							</button>
-							<button
-								onclick={deleteSelectedPhotos}
-								class="text-xs px-3 py-2 rounded-full border border-red-200 text-red-600 active:bg-red-50"
-								title="删除选中的照片"
-							>
-								🗑
-							</button>
-						</div>
-					</div>
-				{/if}
-
 				{#each grouped as [month, list] (month)}
 					<div class="mb-6">
 						<h2
-							class="sticky top-[60px] z-[4] bg-soil-50/90 backdrop-blur-sm text-sm font-medium text-leaf-700 py-2 -mx-1 px-1"
+							class="sticky top-[57px] z-[4] bg-soil-50/90 backdrop-blur-sm text-sm font-medium text-leaf-700 py-2 -mx-1 px-1"
 						>
 							{month}
 						</h2>
 						<div class="grid grid-cols-3 gap-1.5">
-							{#each list as photo (photo.id)}
-								<div
-									class="relative group"
-									role="button"
-									tabindex="0"
-									onclick={() => toggleSelect(photo.id)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											toggleSelect(photo.id);
-										}
-									}}
-								>
+							{#each list as photo, idx (photo.id)}
+								{@const globalIdx = photos.findIndex((p) => p.id === photo.id)}
+								<div class="relative group">
 									<div
 										class="block w-full aspect-square overflow-hidden rounded-lg bg-leaf-50 relative"
-										class:ring-2={selected.includes(photo.id)}
-										class:ring-leaf-500={selected.includes(photo.id)}
+										role="button"
+										tabindex="0"
+										onclick={() => openLightbox(globalIdx)}
+										onkeydown={(e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault();
+												openLightbox(globalIdx);
+											}
+										}}
 									>
 										<img
 											src={blobUrl(photo.id, 'medium')}
@@ -485,11 +445,19 @@
 												⚠
 											</div>
 										{/if}
-										{#if selected.includes(photo.id)}
+										{#if !composeIds.has(photo.id)}
 											<div
-												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-leaf-500 text-white text-xs flex items-center justify-center pointer-events-none"
+												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] flex items-center justify-center pointer-events-none"
+												title="未加入拼接图"
 											>
-												{selected.indexOf(photo.id) + 1}
+												○
+											</div>
+										{:else}
+											<div
+												class="absolute top-1 right-1 w-5 h-5 rounded-full bg-leaf-500 text-white text-[10px] flex items-center justify-center pointer-events-none"
+												title="将加入拼接图"
+											>
+												✓
 											</div>
 										{/if}
 									</div>
@@ -499,7 +467,7 @@
 											e.stopPropagation();
 											handleDeletePhoto(photo.id);
 										}}
-										class="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] opacity-0 group-hover:opacity-100 flex items-center justify-center"
+										class="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/55 text-white text-[10px] opacity-0 group-hover:opacity-100 flex items-center justify-center"
 										aria-label="删除"
 									>
 										✕
@@ -515,7 +483,39 @@
 </main>
 
 {#if plant}
-	<div class="fixed bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+	<!-- 底部固定操作条 -->
+	<div
+		class="fixed bottom-0 left-0 right-0 z-20 bg-soil-50/95 backdrop-blur border-t border-leaf-100 px-4 pb-safe pt-2"
+	>
+		<div class="max-w-3xl mx-auto flex items-center gap-2">
+			<div class="flex-1 text-xs text-leaf-600/70">
+				{#if composeIds.size === photos.length && photos.length > 0}
+					已选全部 {photos.length} 张
+				{:else}
+					已选 {composeIds.size} / {photos.length} 张
+				{/if}
+			</div>
+			<button
+				onclick={() => {
+					if (composeIds.size === photos.length) composeIds = new Set();
+					else composeIds = new Set(photos.map((p) => p.id));
+				}}
+				class="text-xs px-3 py-2 rounded-full border border-leaf-300 text-leaf-700 active:bg-leaf-100"
+			>
+				{composeIds.size === photos.length && photos.length > 0 ? '全不选' : '全选'}
+			</button>
+			<button
+				onclick={composeSelected}
+				disabled={composing || composeIds.size === 0}
+				class="text-xs px-4 py-2 rounded-full bg-leaf-600 text-white font-medium disabled:opacity-50 active:bg-leaf-700"
+			>
+				{composing ? '生成中…' : '📥 生成成长长图'}
+			</button>
+		</div>
+	</div>
+
+	<!-- 右下角拍照按钮 -->
+	<div class="fixed bottom-20 right-6 z-20 flex flex-col items-end gap-2">
 		{#if menuOpen}
 			<div
 				class="bg-white rounded-2xl shadow-xl shadow-leaf-900/15 border border-leaf-100 overflow-hidden animate-pop-in"
@@ -553,7 +553,7 @@
 			disabled={uploading}
 			aria-label="添加照片"
 			aria-expanded={menuOpen}
-			class="w-14 h-14 rounded-full bg-leaf-600 text-white text-2xl shadow-lg shadow-leaf-700/30 active:scale-95 transition flex items-center justify-center disabled:opacity-60"
+			class="w-12 h-12 rounded-full bg-leaf-600 text-white text-2xl shadow-lg shadow-leaf-700/30 active:scale-95 transition flex items-center justify-center disabled:opacity-60"
 			class:rotate-45={menuOpen}
 			style="transition: transform 0.18s;"
 		>
@@ -563,7 +563,7 @@
 
 	{#if toast}
 		<div
-			class="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 max-w-sm px-4 py-2.5 rounded-2xl shadow-lg text-sm animate-pop-in"
+			class="fixed bottom-28 left-1/2 -translate-x-1/2 z-30 max-w-sm px-4 py-2.5 rounded-2xl shadow-lg text-sm animate-pop-in"
 			class:bg-white={toast.kind === 'success'}
 			class:text-leaf-800={toast.kind === 'success'}
 			class:bg-amber-50={toast.kind === 'warn'}
