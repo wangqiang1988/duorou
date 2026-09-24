@@ -16,13 +16,13 @@ services:
     environment:
       - NODE_ENV=production
       - DATA_DIR=/app/data
-      - PORT=3001
+      - PORT=3011
       - HOST=0.0.0.0
     volumes:
       # 持久化数据（照片 + sqlite）
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3001/api/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3011/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -67,7 +67,7 @@ services:
         "
     ports:
       - "${DUOROU_DEV_PORT:-5173}:5173"
-      - "${DUOROU_API_PORT:-3001}:3001"
+      - "${DUOROU_API_PORT:-3011}:3011"
     profiles:
       - dev
     networks:

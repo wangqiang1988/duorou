@@ -42,8 +42,7 @@ duorou/
 │       ├── plant/[id]/       # 详情 + 时间轴 + 对比
 │       └── settings/         # 设置/状态
 ├── api/                       # Fastify 后端
-│   ├── src/
-│   │   ├── server.ts         # 入口
+│   │   ├── server.ts         # 入口（监听 3011）
 │   │   ├── db.ts             # SQLite schema
 │   │   ├── storage.ts        # 文件系统操作
 │   │   └── routes/           # plants / photos CRUD
@@ -146,7 +145,7 @@ PWA 摄像头需要 HTTPS 才能调起（iOS Safari 限制）。
 |---|---|---|
 | `DUOROU_HTTP_PORT` | `8080` | 前端宿主机端口 |
 | `DATA_DIR` | `/app/data` | API 数据目录（容器内） |
-| `PORT` | `3001` | API 容器内端口 |
+| `PORT` | `3011` | API 容器内端口 |
 
 ## 路线图
 

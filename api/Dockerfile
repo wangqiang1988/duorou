@@ -22,7 +22,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
-ENV PORT=3001
+ENV PORT=3011
 ENV HOST=0.0.0.0
 
 # 仅安装生产依赖
@@ -39,8 +39,8 @@ VOLUME ["/app/data"]
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -q -O - http://localhost:3001/api/health || exit 1
+    CMD wget -q -O - http://localhost:3011/api/health || exit 1
 
-EXPOSE 3001
+EXPOSE 3011
 
 CMD ["node", "dist/server.cjs"]

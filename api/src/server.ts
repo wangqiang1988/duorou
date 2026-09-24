@@ -4,7 +4,7 @@ import multipart from '@fastify/multipart';
 import { registerPlantRoutes } from './routes/plants';
 import { registerPhotoRoutes } from './routes/photos';
 
-const PORT = Number(process.env.PORT ?? 3001);
+const PORT = Number(process.env.PORT ?? 3011);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 async function main() {
