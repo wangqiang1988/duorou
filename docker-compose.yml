@@ -1,17 +1,46 @@
 # 多肉成长记 · docker-compose
-# 启动生产服务（nginx 托管静态构建）：docker-compose up -d
-# 启动开发模式（vite dev + 热重载）：docker-compose --profile dev up dev
+# 启动：docker-compose up -d --build
+# 启动开发模式（vite 热重载）：docker-compose --profile dev up dev
 
 version: "3.8"
 
 services:
+  # 后端 API（Fastify + SQLite + 文件存储）
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: duorou-api:latest
+    container_name: duorou-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/app/data
+      - PORT=3001
+      - HOST=0.0.0.0
+    volumes:
+      # 持久化数据（照片 + sqlite）
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - duorou-net
+
+  # 前端（nginx 静态托管）
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: duorou:latest
+    image: duorou-app:latest
     container_name: duorou
     restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
     ports:
       - "${DUOROU_HTTP_PORT:-8080}:80"
     healthcheck:
@@ -19,7 +48,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 5s
     networks:
       - duorou-net
 
@@ -31,9 +60,14 @@ services:
     volumes:
       - .:/app
       - dev_node_modules:/app/node_modules
-    command: sh -c "npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+      - api_node_modules:/app/api/node_modules
+    command: sh -c "
+          cd /app/api && npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund && cd /app && npm config set registry https://registry.npmmirror.com && npm install --no-audit --no-fund &&
+          cd /app/api && npm run dev & npm run dev -- --host 0.0.0.0 && wait
+        "
     ports:
       - "${DUOROU_DEV_PORT:-5173}:5173"
+      - "${DUOROU_API_PORT:-3001}:3001"
     profiles:
       - dev
     networks:
@@ -45,3 +79,4 @@ networks:
 
 volumes:
   dev_node_modules:
+  api_node_modules:

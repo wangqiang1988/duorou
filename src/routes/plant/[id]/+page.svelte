@@ -12,17 +12,16 @@
 		updatePhoto
 	} from '$lib/repo.svelte';
 	import {
-		processPhotoForPlant,
+		processPhotoFile,
 		formatMonth,
 		formatDay,
 		daysSince,
 		isSuspiciousDate
 	} from '$lib/photo';
-	import type { Photo, Plant } from '$lib/types';
+	import type { Photo, PlantWithStats } from '$lib/types';
 
-	let plant = $state<Plant | null>(null);
+	let plant = $state<PlantWithStats | null>(null);
 	let photos = $state<Photo[]>([]);
-	let urls = $state<Record<string, string>>({});
 	let loading = $state(true);
 
 	const plantId = $derived($page.params.id ?? '');
@@ -44,23 +43,8 @@
 			return;
 		}
 		plant = p;
-		const list = await loadPhotos(plantId);
-		photos = list;
-		revokeAll();
-		const next: Record<string, string> = {};
-		for (const ph of list) {
-			next[ph.id] = URL.createObjectURL(ph.medium);
-		}
-		urls = next;
+		photos = await loadPhotos(plantId);
 	}
-
-	function revokeAll() {
-		for (const url of Object.values(urls)) URL.revokeObjectURL(url);
-	}
-
-	$effect(() => {
-		return () => revokeAll();
-	});
 
 	let cameraRef = $state<HTMLInputElement | null>(null);
 	let galleryRef = $state<HTMLInputElement | null>(null);
@@ -96,7 +80,7 @@
 		galleryRef?.click();
 	}
 
-	async function handleFiles(e: Event, source: 'camera' | 'gallery') {
+	async function handleFiles(e: Event) {
 		if (!plantId) return;
 		const input = e.target as HTMLInputElement;
 		const files = Array.from(input.files ?? []);
@@ -109,11 +93,21 @@
 		let nowCount = 0;
 		try {
 			for (const file of files) {
-				const photo = await processPhotoForPlant(file, plantId);
-				if (photo.dateSource === 'exif') exifCount++;
-				else if (photo.dateSource === 'file') fileCount++;
+				const p = await processPhotoFile(file);
+				if (p.dateSource === 'exif') exifCount++;
+				else if (p.dateSource === 'file') fileCount++;
 				else nowCount++;
-				await addPhoto(photo);
+				await addPhoto({
+					plantId,
+					takenAt: p.takenAt,
+					width: p.width,
+					height: p.height,
+					mime: p.mime,
+					dateSource: p.dateSource,
+					orig: p.orig,
+					medium: p.medium,
+					thumb: p.thumb
+				});
 			}
 			await refresh();
 
@@ -126,11 +120,11 @@
 			showToast({ kind: 'success', text: parts.join('') });
 
 			const suspicious = photos.filter((p) => isSuspiciousDate(p.takenAt));
-			if (suspicious.length > 0 && files.length > 0) {
+			if (suspicious.length > 0) {
 				showToast(
 					{
 						kind: 'warn',
-						text: `有 ${suspicious.length} 张照片日期看起来不对（未来或很久以前），可点照片日期修正`
+						text: `有 ${suspicious.length} 张照片日期看起来不对，可点照片日期修正`
 					},
 					5000
 				);
@@ -160,13 +154,13 @@
 			alert('日期格式无效，请用 YYYY-MM-DD');
 			return;
 		}
-		await updatePhoto(photo.id, { takenAt: d.getTime() });
+		await updatePhoto(photo.id, plantId, { takenAt: d.getTime() });
 		await refresh();
 	}
 
 	async function handleDeletePhoto(id: string) {
 		if (!confirm('删除这张照片？')) return;
-		await deletePhoto(id);
+		await deletePhoto(id, plantId);
 		await refresh();
 	}
 
@@ -178,15 +172,15 @@
 	}
 
 	async function handleEdit() {
-		if (!plantId) return;
-		const name = prompt('名字', plant?.name ?? '');
+		if (!plantId || !plant) return;
+		const name = prompt('名字', plant.name);
 		if (name === null) return;
-		const species = prompt('品种', plant?.species ?? '');
+		const species = prompt('品种', plant.species);
 		if (species === null) return;
-		const notes = prompt('备注', plant?.notes ?? '');
+		const notes = prompt('备注', plant.notes);
 		if (notes === null) return;
 		await updatePlant(plantId, {
-			name: name.trim() || (plant?.name ?? ''),
+			name: name.trim() || plant.name,
 			species: species.trim(),
 			notes: notes.trim()
 		});
@@ -217,24 +211,26 @@
 		}
 		return Array.from(map.entries());
 	});
+
+	function blobUrl(id: string, v: 'thumb' | 'medium' | 'orig' = 'medium') {
+		return `/api/photos/${id}/blob?v=${v}`;
+	}
 </script>
 
-<!-- 拍照：iOS 上 capture 强制相机；Android 上选择相机 -->
 <input
 	bind:this={cameraRef}
 	type="file"
 	accept="image/*"
 	capture="environment"
-	onchange={(e) => handleFiles(e, 'camera')}
+	onchange={handleFiles}
 	class="hidden"
 />
-<!-- 相册：不带 capture，多选；iOS / Android 都会弹相册选择 -->
 <input
 	bind:this={galleryRef}
 	type="file"
 	accept="image/*"
 	multiple
-	onchange={(e) => handleFiles(e, 'gallery')}
+	onchange={handleFiles}
 	class="hidden"
 />
 
@@ -349,7 +345,7 @@
 										class:ring-leaf-500={selected.includes(photo.id)}
 									>
 										<img
-											src={urls[photo.id]}
+											src={blobUrl(photo.id, 'medium')}
 											alt=""
 											class="w-full h-full object-cover"
 											loading="lazy"

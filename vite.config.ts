@@ -44,7 +44,15 @@ export default defineConfig({
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,svg,png,ico,webp}'],
 				navigateFallback: '/',
-				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
+				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+				navigateFallbackDenylist: [/^\/api\//],
+				// 不缓存 API 请求（始终走网络）
+				runtimeCaching: [
+					{
+						urlPattern: /^\/api\//,
+						handler: 'NetworkOnly'
+					}
+				]
 			},
 			devOptions: {
 				enabled: false
@@ -63,8 +71,14 @@ export default defineConfig({
 			})
 		})
 	],
-	server: {
-		host: '0.0.0.0',
-		port: 5173
-	}
+server: {
+			host: '0.0.0.0',
+			port: 5173,
+			proxy: {
+				'/api': {
+					target: 'http://localhost:3001',
+					changeOrigin: false
+				}
+			}
+		}
 });

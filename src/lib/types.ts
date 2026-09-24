@@ -1,5 +1,7 @@
 export type ID = string;
 
+export type DateSource = 'exif' | 'file' | 'now';
+
 export interface Plant {
 	id: ID;
 	name: string;
@@ -10,6 +12,11 @@ export interface Plant {
 	updatedAt: number;
 }
 
+export interface PlantWithStats extends Plant {
+	photoCount: number;
+	coverPhotoId: ID | null;
+}
+
 export interface Photo {
 	id: ID;
 	plantId: ID;
@@ -18,10 +25,13 @@ export interface Photo {
 	height: number;
 	caption: string;
 	mime: string;
-	thumb: Blob;
-	medium: Blob;
-	original: Blob;
-	dateSource?: 'exif' | 'file' | 'now';
+	dateSource: DateSource;
+	sizeOrig: number;
+	sizeMedium: number;
+	sizeThumb: number;
+	createdAt: number;
 }
 
-export type PhotoBlobKey = 'thumb' | 'medium' | 'original';
+export function photoBlobUrl(id: ID, variant: 'orig' | 'medium' | 'thumb' = 'medium'): string {
+	return `/api/photos/${id}/blob?v=${variant}`;
+}

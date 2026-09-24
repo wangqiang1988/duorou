@@ -1,15 +1,13 @@
 import exifr from 'exifr';
-import { uid } from './db';
-import type { Photo } from './types';
 
 const THUMB_MAX = 320;
 const MEDIUM_MAX = 1280;
 
-export type TakenAtSource = 'exif' | 'file' | 'now';
+export type DateSource = 'exif' | 'file' | 'now';
 
 export interface TakenAtResult {
 	takenAt: number;
-	source: TakenAtSource;
+	source: DateSource;
 	sourceField?: string;
 }
 
@@ -30,30 +28,28 @@ export async function readTakenAt(file: File): Promise<TakenAtResult> {
 			if (!raw) continue;
 			const d = raw instanceof Date ? raw : new Date(raw);
 			if (!isNaN(d.getTime())) {
-				return { takenAt: d.getTime(), source: 'exif', sourceField: label };
+				return {takenAt: d.getTime(), source: 'exif', sourceField: label};
 			}
 		}
 	} catch {
-		/* EXIF 读取失败就用 fallback */
+		/* EXIF 读取失败 */
 	}
 	if (file.lastModified) {
-		return { takenAt: file.lastModified, source: 'file' };
+		return {takenAt: file.lastModified, source: 'file'};
 	}
-	return { takenAt: Date.now(), source: 'now' };
+	return {takenAt: Date.now(), source: 'now'};
 }
 
 export function isSuspiciousDate(ts: number): boolean {
 	const now = Date.now();
 	const oneDay = 86400000;
-	// 未来 1 天以上，或 10 年以前
 	if (ts > now + oneDay) return true;
 	if (ts < now - 3650 * oneDay) return true;
 	return false;
 }
 
 async function fileToImageBitmap(file: File): Promise<ImageBitmap> {
-	const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-	return bitmap;
+	return createImageBitmap(file, {imageOrientation: 'from-image'});
 }
 
 function bitmapToBlob(
@@ -61,7 +57,7 @@ function bitmapToBlob(
 	maxSide: number,
 	mime: string,
 	quality: number
-): Promise<{ blob: Blob; width: number; height: number }> {
+): Promise<{blob: Blob; width: number; height: number}> {
 	const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
 	const w = Math.round(bitmap.width * ratio);
 	const h = Math.round(bitmap.height * ratio);
@@ -78,7 +74,7 @@ function bitmapToBlob(
 					reject(new Error('Canvas toBlob 返回空'));
 					return;
 				}
-				resolve({ blob, width: w, height: h });
+				resolve({blob, width: w, height: h});
 			},
 			mime,
 			quality
@@ -87,71 +83,35 @@ function bitmapToBlob(
 }
 
 export interface ProcessedPhoto {
-	id: string;
 	takenAt: number;
 	width: number;
 	height: number;
 	mime: string;
-	thumb: Blob;
+	dateSource: DateSource;
+	orig: Blob;
 	medium: Blob;
-	original: Blob;
-	dateSource: TakenAtSource;
+	thumb: Blob;
 }
 
-export async function processPhotoFile(
-	file: File,
-	defaultTakenAt?: number
-): Promise<ProcessedPhoto> {
+export async function processPhotoFile(file: File): Promise<ProcessedPhoto> {
 	const result = await readTakenAt(file);
-	const takenAt = defaultTakenAt ?? result.takenAt;
 	const mime = file.type.startsWith('image/') ? file.type : 'image/jpeg';
 
 	const bitmap = await fileToImageBitmap(file);
-	const thumb = await bitmapToBlob(bitmap, THUMB_MAX, mime, 0.78);
-	const medium = await bitmapToBlob(bitmap, MEDIUM_MAX, mime, 0.85);
+	const thumbResult = await bitmapToBlob(bitmap, THUMB_MAX, mime, 0.78);
+	const mediumResult = await bitmapToBlob(bitmap, MEDIUM_MAX, mime, 0.85);
 	bitmap.close();
 
 	return {
-		id: uid(),
-		takenAt,
-		width: medium.width,
-		height: medium.height,
+		takenAt: result.takenAt,
+		width: mediumResult.width,
+		height: mediumResult.height,
 		mime,
-		thumb: thumb.blob,
-		medium: medium.blob,
-		original: file,
-		dateSource: defaultTakenAt ? 'now' : result.source
+		dateSource: result.source,
+		orig: file,
+		medium: mediumResult.blob,
+		thumb: thumbResult.blob
 	};
-}
-
-export async function processPhotoForPlant(
-	file: File,
-	plantId: string,
-	caption = ''
-): Promise<Photo> {
-	const p = await processPhotoFile(file);
-	return {
-		id: p.id,
-		plantId,
-		takenAt: p.takenAt,
-		width: p.width,
-		height: p.height,
-		caption,
-		mime: p.mime,
-		thumb: p.thumb,
-		medium: p.medium,
-		original: p.original,
-		dateSource: p.dateSource
-	};
-}
-
-export function readFileAsDataURL(blob: Blob): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(reader.result as string);
-		reader.onerror = () => reject(reader.error);
-		reader.readAsDataURL(blob);
-	});
 }
 
 export function formatDay(ts: number): string {

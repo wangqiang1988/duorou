@@ -2,16 +2,15 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { getPhoto, getPlant } from '$lib/repo.svelte';
+	import { photosApi } from '$lib/api';
+	import { getPlant } from '$lib/repo.svelte';
 	import { formatDay } from '$lib/photo';
 	import CompareSlider from '$lib/components/CompareSlider.svelte';
-	import type { Photo, Plant } from '$lib/types';
+	import type { Photo, PlantWithStats } from '$lib/types';
 
-	let plant = $state<Plant | null>(null);
+	let plant = $state<PlantWithStats | null>(null);
 	let photoA = $state<Photo | null>(null);
 	let photoB = $state<Photo | null>(null);
-	let urlA = $state<string>('');
-	let urlB = $state<string>('');
 	let loading = $state(true);
 
 	const plantId = $derived($page.params.id ?? '');
@@ -26,8 +25,8 @@
 		(async () => {
 			const [p, a, b] = await Promise.all([
 				getPlant(plantId),
-				getPhoto(aId),
-				getPhoto(bId)
+				photosApi.get(aId),
+				photosApi.get(bId)
 			]);
 			if (!p || !a || !b) {
 				goto(`/plant/${plantId}`);
@@ -36,19 +35,16 @@
 			plant = p;
 			photoA = a;
 			photoB = b;
-			urlA = URL.createObjectURL(a.medium);
-			urlB = URL.createObjectURL(b.medium);
 			loading = false;
 		})();
-
-		return () => {
-			if (urlA) URL.revokeObjectURL(urlA);
-			if (urlB) URL.revokeObjectURL(urlB);
-		};
 	});
 
 	function swap() {
 		goto(`/plant/${plantId}/compare?a=${bId}&b=${aId}`);
+	}
+
+	function blobUrl(id: string) {
+		return `/api/photos/${id}/blob?v=medium`;
 	}
 </script>
 
@@ -74,15 +70,13 @@
 				<span class="mx-2 text-leaf-600/50">→</span>
 				<span class="font-medium">{formatDay(photoB.takenAt)}</span>
 				<span class="ml-2 text-leaf-600/50"
-					>{Math.abs(
-						Math.round((photoB.takenAt - photoA.takenAt) / 86400000)
-					)} 天</span
+					>{Math.abs(Math.round((photoB.takenAt - photoA.takenAt) / 86400000))} 天</span
 				>
 			</div>
 
 			<CompareSlider
-				beforeUrl={urlA}
-				afterUrl={urlB}
+				beforeUrl={blobUrl(photoA.id)}
+				afterUrl={blobUrl(photoB.id)}
 				beforeLabel={formatDay(photoA.takenAt)}
 				afterLabel={formatDay(photoB.takenAt)}
 			/>

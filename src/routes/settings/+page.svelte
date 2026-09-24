@@ -1,50 +1,32 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { listPlants } from '$lib/repo.svelte';
-	import { exportAll, importAll } from '$lib/backup';
+	import { photosApi } from '$lib/api';
+	import { loadPlants } from '$lib/repo.svelte';
 
 	let plantsCount = $state(0);
 	let photosCount = $state(0);
-	let busy = $state(false);
-	let lastImport = $state<string>('');
+	let totalBytes = $state(0);
+	let apiOnline = $state<boolean | null>(null);
 
-	async function refreshStats() {
-		const { db } = await import('$lib/db');
-		plantsCount = await db.plants.count();
-		photosCount = await db.photos.count();
-	}
-
-	onMount(refreshStats);
-
-	async function handleExport() {
-		busy = true;
+	async function refresh() {
 		try {
-			await exportAll();
-		} catch (e) {
-			alert('导出失败：' + (e as Error).message);
-		} finally {
-			busy = false;
+			const s = await photosApi.stats();
+			plantsCount = s.plants;
+			photosCount = s.photos;
+			totalBytes = s.totalBytes;
+			apiOnline = true;
+		} catch {
+			apiOnline = false;
 		}
 	}
 
-	let importRef = $state<HTMLInputElement | null>(null);
-	async function handleImport(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-		busy = true;
-		try {
-			const result = await importAll(file);
-			lastImport = `导入完成：新增 ${result.plants} 株多肉、${result.photos} 张照片`;
-			await listPlants();
-			await refreshStats();
-		} catch (err) {
-			alert('导入失败：' + (err as Error).message);
-		} finally {
-			busy = false;
-			input.value = '';
-		}
+	onMount(refresh);
+
+	function formatBytes(n: number): string {
+		if (n < 1024) return n + ' B';
+		if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+		if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+		return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
 	}
 </script>
 
@@ -60,69 +42,51 @@
 
 <main class="flex-1 px-4 pb-12">
 	<div class="max-w-3xl mx-auto pt-6 space-y-4">
+		<section
+			class="bg-white rounded-2xl p-5 border"
+			class:border-green-200={apiOnline === true}
+			class:border-red-200={apiOnline === false}
+			class:border-leaf-100={apiOnline === null}
+		>
+			<h2 class="text-sm font-medium text-leaf-800 mb-1 flex items-center gap-2">
+				服务器状态
+				{#if apiOnline === true}
+					<span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">在线</span>
+				{:else if apiOnline === false}
+					<span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">离线</span>
+				{/if}
+			</h2>
+			<p class="text-xs text-leaf-600/70 leading-relaxed">
+				照片与元数据存于 Docker 容器内的本地服务器（SQLite + 文件系统）
+			</p>
+		</section>
+
 		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
 			<h2 class="text-sm font-medium text-leaf-800 mb-1">数据统计</h2>
 			<div class="text-xs text-leaf-600/70 leading-relaxed">
 				共 <span class="text-leaf-800 font-semibold">{plantsCount}</span> 株多肉 ·
-				<span class="text-leaf-800 font-semibold">{photosCount}</span> 张照片
+				<span class="text-leaf-800 font-semibold">{photosCount}</span> 张照片 ·
+				占空间 <span class="text-leaf-800 font-semibold">{formatBytes(totalBytes)}</span>
 			</div>
-		</section>
-
-		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
-			<h2 class="text-sm font-medium text-leaf-800 mb-1">备份与恢复</h2>
-			<p class="text-xs text-leaf-600/70 mb-4 leading-relaxed">
-				所有数据都在本地浏览器中。建议定期导出备份 ZIP，
-				换手机或清缓存前一定记得备份一次。
-			</p>
-			<div class="flex gap-2">
-				<button
-					onclick={handleExport}
-					disabled={busy}
-					class="flex-1 py-2.5 rounded-xl bg-leaf-600 text-white text-sm disabled:opacity-60"
-				>
-					{busy ? '处理中…' : '📦 导出备份'}
-				</button>
-				<button
-					onclick={() => importRef?.click()}
-					disabled={busy}
-					class="flex-1 py-2.5 rounded-xl border border-leaf-300 text-leaf-700 text-sm disabled:opacity-60"
-				>
-					📥 导入备份
-				</button>
-			</div>
-			<input
-				bind:this={importRef}
-				type="file"
-				accept=".zip,application/zip"
-				onchange={handleImport}
-				class="hidden"
-			/>
-			{#if lastImport}
-				<div class="mt-3 text-xs text-leaf-600/80">{lastImport}</div>
-			{/if}
 		</section>
 
 		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
 			<h2 class="text-sm font-medium text-leaf-800 mb-2">多设备同步</h2>
 			<p class="text-xs text-leaf-600/70 leading-relaxed mb-2">
-				数据存在浏览器 IndexedDB 里，<b>不同设备/浏览器互相看不到</b>。
-				手机拍完后想同步到电脑或另一台设备：
+				所有设备访问同一个 Docker 实例即可看到全部数据。
 			</p>
-			<ol class="text-xs text-leaf-700/80 leading-relaxed space-y-1 pl-4 list-decimal">
-				<li>手机上点「导出备份」，把 ZIP 发到电脑</li>
-				<li>电脑上打开页面，点「导入备份」选那个 ZIP</li>
-				<li>同 ID 的植物/照片会自动跳过（不会重复）</li>
-			</ol>
-			<p class="text-[11px] text-leaf-600/50 mt-2 leading-relaxed">
-				未来会增加云端自动同步（需要账号 + 后端）。
-			</p>
+			<ul class="text-xs text-leaf-700/80 leading-relaxed space-y-1 pl-4 list-disc">
+				<li>同一 Docker → 数据自动共享</li>
+				<li>换设备 → 重新部署 Docker 并挂载同一份 <code class="bg-leaf-50 px-1 rounded">./data</code></li>
+				<li>数据安全 → 备份 <code class="bg-leaf-50 px-1 rounded">./data</code> 整个目录</li>
+			</ul>
 		</section>
 
 		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
 			<h2 class="text-sm font-medium text-leaf-800 mb-1">关于</h2>
 			<p class="text-xs text-leaf-600/70 leading-relaxed">
-				多肉成长记 v0.2 · 数据完全保存在你的设备本地 ·
-				本应用不会上传任何数据到服务器
+				多肉成长记 v0.3 · 数据存于本地服务器（Fastify + SQLite + 文件系统）·
+				无鉴权模式仅适合内网使用
 			</p>
 		</section>
 	</div>

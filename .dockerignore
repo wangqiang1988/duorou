@@ -9,7 +9,12 @@ dist
 .dockerignore
 Dockerfile
 docker-compose*.yml
+nginx.conf
 
 # 测试 / 调试
 _test-*.mjs
 _*.py
+
+# API 子项目
+api/node_modules
+api/dist

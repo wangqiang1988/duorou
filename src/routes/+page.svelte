@@ -1,13 +1,12 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { plants, listPlants, deletePlant } from '$lib/repo.svelte';
+	import { plants, loadPlants, deletePlant } from '$lib/repo.svelte';
+	import { daysSince } from '$lib/photo';
 	import PlantCard from '$lib/components/PlantCard.svelte';
 
 	let loaded = $state(false);
 
 	onMount(async () => {
-		await listPlants();
+		await loadPlants();
 		loaded = true;
 	});
 
@@ -19,6 +18,9 @@
 	function handleNew() {
 		goto('/plant/new');
 	}
+
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 </script>
 
 <header

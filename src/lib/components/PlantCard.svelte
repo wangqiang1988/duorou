@@ -1,16 +1,13 @@
 <script lang="ts">
-	import { photoCovers, photoCounts } from '$lib/repo.svelte';
 	import { daysSince } from '$lib/photo';
-	import type { Plant } from '$lib/types';
+	import type { PlantWithStats } from '$lib/types';
 
 	interface Props {
-		plant: Plant;
+		plant: PlantWithStats;
 		onDelete?: (id: string) => void;
 	}
 
 	let { plant, onDelete }: Props = $props();
-	let coverUrl = $derived(photoCovers[plant.id]);
-	let count = $derived(photoCounts[plant.id] ?? 0);
 	let days = $derived(daysSince(plant.acquiredAt));
 </script>
 
@@ -19,9 +16,9 @@
 	class="block bg-white rounded-2xl overflow-hidden shadow-sm shadow-leaf-900/5 hover:shadow-md transition active:scale-[0.98]"
 >
 	<div class="aspect-square bg-leaf-50 overflow-hidden relative">
-		{#if coverUrl}
+		{#if plant.coverPhotoId}
 			<img
-				src={coverUrl}
+				src={'/api/photos/' + plant.coverPhotoId + '/blob?v=thumb'}
 				alt={plant.name}
 				class="w-full h-full object-cover"
 				loading="lazy"
@@ -31,11 +28,11 @@
 				🪴
 			</div>
 		{/if}
-		{#if count > 0}
+		{#if plant.photoCount > 0}
 			<div
 				class="absolute bottom-1.5 right-1.5 bg-black/55 text-white text-[10px] px-1.5 py-0.5 rounded-full backdrop-blur-sm"
 			>
-				📷 {count}
+				📷 {plant.photoCount}
 			</div>
 		{/if}
 	</div>

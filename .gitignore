@@ -7,6 +7,11 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/dist
+/api/dist
+
+# Data（运行时持久化）
+/data
 
 # OS
 .DS_Store
