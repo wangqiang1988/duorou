@@ -196,7 +196,37 @@ export async function composeTimeline(opts: ComposeOptions): Promise<Blob> {
 	});
 }
 
-export function downloadBlob(blob: Blob, filename: string): void {
+/**
+ * 保存图片：手机优先用 Web Share API（弹出系统分享菜单，可选"存储图像"→相册），
+ * 桌面浏览器回退到传统 `<a download>` 下载到下载文件夹。
+ */
+export async function saveImage(blob: Blob, filename: string): Promise<'shared' | 'downloaded'> {
+	const file = new File([blob], filename, {type: blob.type || 'image/png'});
+
+	// 移动端 / Safari：Web Share API 可直接弹出"存储图像"到相册
+	const nav = navigator as Navigator & {
+		canShare?: (data?: ShareData) => boolean;
+		share?: (data?: ShareData) => Promise<void>;
+	};
+	if (typeof nav.canShare === 'function' && typeof nav.share === 'function') {
+		const shareData: ShareData = {
+			files: [file],
+			title: filename,
+			text: '来自多肉成长记'
+		};
+		if (nav.canShare(shareData)) {
+			try {
+				await nav.share(shareData);
+				return 'shared';
+			} catch (err) {
+				// 用户取消（AbortError）静默退出，其他错误 fallback 到下载
+				if ((err as Error).name === 'AbortError') return 'shared';
+				console.warn('Web Share 失败，回退到下载：', err);
+			}
+		}
+	}
+
+	// 桌面 / 不支持 Share 的浏览器：传统下载
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement('a');
 	a.href = url;
@@ -205,4 +235,5 @@ export function downloadBlob(blob: Blob, filename: string): void {
 	a.click();
 	a.remove();
 	setTimeout(() => URL.revokeObjectURL(url), 1000);
+	return 'downloaded';
 }

@@ -18,7 +18,7 @@
 		daysSince,
 		isSuspiciousDate
 	} from '$lib/photo';
-	import { composeTimeline, downloadBlob } from '$lib/compose';
+	import { composeTimeline, saveImage } from '$lib/compose';
 	import type { Photo, PlantWithStats } from '$lib/types';
 
 	let plant = $state<PlantWithStats | null>(null);
@@ -233,11 +233,18 @@
 			});
 			const stamp = formatDay(Date.now()).replace(/-/g, '');
 			const filename = `${plant.name}-成长-${ordered.length}张-${stamp}.png`;
-			downloadBlob(blob, filename);
-			showToast({
-				kind: 'success',
-				text: `已生成 ${ordered.length} 张的拼接图（${(blob.size / 1024).toFixed(0)} KB）`
-			});
+			const result = await saveImage(blob, filename);
+			if (result === 'shared') {
+				showToast({
+					kind: 'success',
+					text: `已生成 ${ordered.length} 张（${(blob.size / 1024).toFixed(0)} KB），请在弹出的菜单选"存储图像"保存到相册`
+				});
+			} else {
+				showToast({
+					kind: 'success',
+					text: `已生成 ${ordered.length} 张（${(blob.size / 1024).toFixed(0)} KB），已下载到下载文件夹`
+				});
+			}
 		} catch (err) {
 			showToast({kind: 'error', text: '生成失败：' + (err as Error).message});
 		} finally {
