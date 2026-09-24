@@ -506,7 +506,7 @@
 					{#each sortedPhotos as photo (photo.id)}
 						{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
 						<div
-							class="relative group bg-white rounded-xl overflow-hidden shadow-sm shadow-leaf-900/5"
+							class="relative group bg-leaf-900/90 rounded-xl overflow-hidden shadow-sm shadow-leaf-900/5"
 							role="button"
 							tabindex="0"
 							onclick={() => openLightbox(globalIdx)}
@@ -517,11 +517,11 @@
 								}
 							}}
 						>
-							<!-- 微缩图：固定最大高度 160px，保留原图比例 -->
+							<!-- 微缩图：等比缩放，固定最大高度 160px，背景深色填空白 -->
 							<img
 								src={blobUrl(photo.id, 'thumb')}
 								alt=""
-								class="w-full max-h-40 object-cover"
+								class="w-full max-h-40 object-contain"
 								loading="lazy"
 							/>
 
