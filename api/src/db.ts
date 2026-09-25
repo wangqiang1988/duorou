@@ -14,38 +14,95 @@ export const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS plants (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    species     TEXT NOT NULL DEFAULT '',
-    acquired_at INTEGER NOT NULL,
-    notes       TEXT NOT NULL DEFAULT '',
-    died_at     INTEGER,
-    created_at  INTEGER NOT NULL,
-    updated_at  INTEGER NOT NULL
-  );
+/**
+ * 自动迁移系统
+ * 用 PRAGMA user_version 追踪当前 schema 版本
+ * 每次升级只需要在 MIGRATIONS 列表追加新版本
+ */
+const TARGET_SCHEMA_VERSION = 2;
 
-  CREATE TABLE IF NOT EXISTS photos (
-    id           TEXT PRIMARY KEY,
-    plant_id     TEXT NOT NULL,
-    taken_at     INTEGER NOT NULL,
-    width        INTEGER NOT NULL DEFAULT 0,
-    height       INTEGER NOT NULL DEFAULT 0,
-    caption      TEXT NOT NULL DEFAULT '',
-    mime         TEXT NOT NULL DEFAULT 'image/jpeg',
-    date_source  TEXT NOT NULL DEFAULT 'now',
-    size_orig    INTEGER NOT NULL DEFAULT 0,
-    size_medium  INTEGER NOT NULL DEFAULT 0,
-    size_thumb   INTEGER NOT NULL DEFAULT 0,
-    created_at   INTEGER NOT NULL,
-    FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
-  );
+interface Migration {
+	version: number;
+	up: () => void;
+}
 
-  CREATE INDEX IF NOT EXISTS idx_photos_plant ON photos(plant_id);
-  CREATE INDEX IF NOT EXISTS idx_photos_taken ON photos(taken_at);
-  CREATE INDEX IF NOT EXISTS idx_plants_died ON plants(died_at);
-`);
+const MIGRATIONS: Migration[] = [
+	{
+		version: 1,
+		up: () => {
+			// 初始 schema（兼容老库：CREATE IF NOT EXISTS 自动跳过已存在的表）
+			db.exec(`
+				CREATE TABLE IF NOT EXISTS plants (
+					id          TEXT PRIMARY KEY,
+					name        TEXT NOT NULL,
+					species     TEXT NOT NULL DEFAULT '',
+					acquired_at INTEGER NOT NULL,
+					notes       TEXT NOT NULL DEFAULT '',
+					created_at  INTEGER NOT NULL,
+					updated_at  INTEGER NOT NULL
+				);
+
+				CREATE TABLE IF NOT EXISTS photos (
+					id           TEXT PRIMARY KEY,
+					plant_id     TEXT NOT NULL,
+					taken_at     INTEGER NOT NULL,
+					width        INTEGER NOT NULL DEFAULT 0,
+					height       INTEGER NOT NULL DEFAULT 0,
+					caption      TEXT NOT NULL DEFAULT '',
+					mime         TEXT NOT NULL DEFAULT 'image/jpeg',
+					date_source  TEXT NOT NULL DEFAULT 'now',
+					size_orig    INTEGER NOT NULL DEFAULT 0,
+					size_medium  INTEGER NOT NULL DEFAULT 0,
+					size_thumb   INTEGER NOT NULL DEFAULT 0,
+					created_at   INTEGER NOT NULL,
+					FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
+				);
+
+				CREATE INDEX IF NOT EXISTS idx_photos_plant ON photos(plant_id);
+				CREATE INDEX IF NOT EXISTS idx_photos_taken ON photos(taken_at);
+			`);
+		}
+	},
+	{
+		version: 2,
+		up: () => {
+			// plants 加 died_at 字段（兼容老库：先检查列是否存在）
+			const cols = db
+				.prepare("PRAGMA table_info(plants)")
+				.all() as Array<{name: string}>;
+			if (!cols.some((c) => c.name === 'died_at')) {
+				db.exec('ALTER TABLE plants ADD COLUMN died_at INTEGER');
+			}
+			db.exec(
+				'CREATE INDEX IF NOT EXISTS idx_plants_died ON plants(died_at)'
+			);
+		}
+	}
+];
+
+function getCurrentVersion(): number {
+	const row = db.pragma('user_version', {simple: true}) as number;
+	return row ?? 0;
+}
+
+function runMigrations(): void {
+	const current = getCurrentVersion();
+	if (current >= TARGET_SCHEMA_VERSION) return;
+
+	for (const m of MIGRATIONS) {
+		if (m.version <= current) continue;
+		const tx = db.transaction(() => {
+			m.up();
+			db.pragma(`user_version = ${m.version}`);
+		});
+		tx();
+	}
+	console.log(
+		`[db] schema 迁移完成：v${current} → v${getCurrentVersion()}`
+	);
+}
+
+runMigrations();
 
 export interface PlantRow {
 	id: string;
