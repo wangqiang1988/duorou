@@ -2,11 +2,19 @@
 	import { onMount } from 'svelte';
 	import { photosApi } from '$lib/api';
 	import { loadPlants } from '$lib/repo.svelte';
+	import { appName, setAppName, resetAppName } from '$lib/appName.svelte';
 
 	let plantsCount = $state(0);
 	let photosCount = $state(0);
 	let totalBytes = $state(0);
 	let apiOnline = $state<boolean | null>(null);
+
+	let nameInput = $state('');
+	let nameSaving = $state(false);
+
+	$effect(() => {
+		nameInput = appName.value;
+	});
 
 	async function refresh() {
 		try {
@@ -21,6 +29,21 @@
 	}
 
 	onMount(refresh);
+
+	async function saveName() {
+		nameSaving = true;
+		try {
+			setAppName(nameInput);
+		} finally {
+			nameSaving = false;
+		}
+	}
+
+	function resetName() {
+		if (!confirm('恢复默认名称「多肉成长记」？')) return;
+		resetAppName();
+		nameInput = '多肉成长记';
+	}
 
 	function formatBytes(n: number): string {
 		if (n < 1024) return n + ' B';
@@ -42,6 +65,37 @@
 
 <main class="flex-1 px-4 pb-12">
 	<div class="max-w-3xl mx-auto pt-6 space-y-4">
+		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
+			<h2 class="text-sm font-medium text-leaf-800 mb-1">应用名称</h2>
+			<p class="text-xs text-leaf-600/70 leading-relaxed mb-3">
+				修改后主页标题立即更新。仅本设备生效（PWA 桌面图标名称需重新构建）。
+			</p>
+			<div class="flex gap-2">
+				<input
+					type="text"
+					bind:value={nameInput}
+					maxlength="20"
+					class="flex-1 px-3 py-2 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm"
+					placeholder="多肉成长记"
+				/>
+				<button
+					type="button"
+					onclick={saveName}
+					disabled={nameSaving || nameInput.trim() === appName.value}
+					class="px-4 py-2 rounded-full bg-leaf-600 text-white text-sm font-medium disabled:opacity-40 active:bg-leaf-700"
+				>
+					保存
+				</button>
+			</div>
+			<button
+				type="button"
+				onclick={resetName}
+				class="mt-2 text-xs text-leaf-600/70 hover:text-leaf-800"
+			>
+				恢复默认
+			</button>
+		</section>
+
 		<section
 			class="bg-white rounded-2xl p-5 border"
 			class:border-green-200={apiOnline === true}
@@ -85,7 +139,7 @@
 		<section class="bg-white rounded-2xl p-5 border border-leaf-100">
 			<h2 class="text-sm font-medium text-leaf-800 mb-1">关于</h2>
 			<p class="text-xs text-leaf-600/70 leading-relaxed">
-				多肉成长记 v0.3 · 数据存于本地服务器（Fastify + SQLite + 文件系统）·
+				多肉成长记 v0.4 · 数据存于本地服务器（Fastify + SQLite + 文件系统）·
 				无鉴权模式仅适合内网使用
 			</p>
 		</section>

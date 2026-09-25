@@ -8,6 +8,7 @@
 	} from '$lib/repo.svelte';
 	import PlantCard from '$lib/components/PlantCard.svelte';
 	import { groupBySpecies, type SpeciesGroup } from '$lib/grouping';
+	import { appName } from '$lib/appName.svelte';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 
@@ -56,7 +57,7 @@
 >
 	<div class="max-w-3xl mx-auto py-3 flex items-center justify-between gap-2">
 		<div class="min-w-0">
-			<h1 class="text-xl font-semibold text-leaf-800">多肉成长记</h1>
+			<h1 class="text-xl font-semibold text-leaf-800">{appName.value}</h1>
 			<p class="text-xs text-leaf-600/70">记录每一片叶子的时光</p>
 		</div>
 		<a
