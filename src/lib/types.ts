@@ -8,6 +8,7 @@ export interface Plant {
 	species: string;
 	acquiredAt: number;
 	notes: string;
+	diedAt: number | null;
 	createdAt: number;
 	updatedAt: number;
 }

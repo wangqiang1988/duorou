@@ -21,6 +21,7 @@ db.exec(`
     species     TEXT NOT NULL DEFAULT '',
     acquired_at INTEGER NOT NULL,
     notes       TEXT NOT NULL DEFAULT '',
+    died_at     INTEGER,
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
   );
@@ -43,6 +44,7 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_photos_plant ON photos(plant_id);
   CREATE INDEX IF NOT EXISTS idx_photos_taken ON photos(taken_at);
+  CREATE INDEX IF NOT EXISTS idx_plants_died ON plants(died_at);
 `);
 
 export interface PlantRow {
@@ -51,6 +53,7 @@ export interface PlantRow {
 	species: string;
 	acquired_at: number;
 	notes: string;
+	died_at: number | null;
 	created_at: number;
 	updated_at: number;
 }
@@ -77,6 +80,7 @@ export function rowToPlant(r: PlantRow) {
 		species: r.species,
 		acquiredAt: r.acquired_at,
 		notes: r.notes,
+		diedAt: r.died_at,
 		createdAt: r.created_at,
 		updatedAt: r.updated_at
 	};

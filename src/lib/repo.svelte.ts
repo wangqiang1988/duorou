@@ -1,12 +1,23 @@
 import { plantsApi, photosApi } from './api';
 import type { Photo, PlantWithStats } from './types';
 
+class PlantsState {
+	mode = $state<'alive' | 'dead'>('alive');
+}
+
+export const plantsState = new PlantsState();
+
 export const plants = $state<PlantWithStats[]>([]);
 
 export async function loadPlants(): Promise<void> {
-	const list = await plantsApi.list();
+	const list = await plantsApi.list(plantsState.mode);
 	plants.length = 0;
 	plants.push(...list);
+}
+
+export async function setPlantsMode(mode: 'alive' | 'dead'): Promise<void> {
+	plantsState.mode = mode;
+	await loadPlants();
 }
 
 export async function loadPhotos(plantId: string): Promise<Photo[]> {
@@ -23,7 +34,7 @@ export async function createPlant(
 
 export async function updatePlant(
 	id: string,
-	patch: Partial<Pick<PlantWithStats, 'name' | 'species' | 'acquiredAt' | 'notes'>>
+	patch: Partial<Pick<PlantWithStats, 'name' | 'species' | 'acquiredAt' | 'notes' | 'diedAt'>>
 ): Promise<void> {
 	await plantsApi.update(id, patch);
 	await loadPlants();

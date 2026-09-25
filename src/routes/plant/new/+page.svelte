@@ -32,7 +32,8 @@
 				name: name.trim(),
 				species: species.trim(),
 				acquiredAt: parseDate(acquiredAt),
-				notes: notes.trim()
+				notes: notes.trim(),
+				diedAt: null
 			});
 			goto(`/plant/${plant.id}`);
 		} catch (err) {

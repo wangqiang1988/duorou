@@ -11,13 +11,14 @@
 		deletePhoto,
 		updatePhoto
 	} from '$lib/repo.svelte';
-	import {
-		processPhotoFile,
-		formatMonth,
-		formatDay,
-		daysSince,
-		isSuspiciousDate
-	} from '$lib/photo';
+import {
+	processPhotoFile,
+	formatMonth,
+	formatDay,
+	daysSince,
+	formatRelativeTime,
+	isSuspiciousDate
+} from '$lib/photo';
 	import { composeTimeline, saveImage } from '$lib/compose';
 	import Lightbox from '$lib/components/Lightbox.svelte';
 	import type { Photo, PlantWithStats } from '$lib/types';
@@ -220,6 +221,34 @@
 			return;
 		await deletePlant(plantId);
 		goto('/');
+	}
+
+	async function handleMarkDead() {
+		if (!plantId || !plant) return;
+		const today = formatDay(Date.now());
+		const input = prompt(
+			`将「${plant.name}」标记为已离世。\n\n请输入离世日期 (YYYY-MM-DD)：`,
+			today
+		);
+		if (input === null) return;
+		const d = new Date(input + 'T12:00:00');
+		if (isNaN(d.getTime())) {
+			showToast({kind: 'error', text: '日期格式无效'});
+			return;
+		}
+		if (!confirm(`确认将「${plant.name}」标记为离世？\n\n离世日期：${formatDay(d.getTime())}\n\n可以稍后在纪念碑 tab 找到它。`))
+			return;
+		await updatePlant(plantId, {diedAt: d.getTime()});
+		await refresh();
+		showToast({kind: 'success', text: `已为「${plant.name}」立纪念碑`});
+	}
+
+	async function handleRevive() {
+		if (!plantId || !plant) return;
+		if (!confirm(`将「${plant.name}」复活（撤销离世标记）？`)) return;
+		await updatePlant(plantId, {diedAt: null});
+		await refresh();
+		showToast({kind: 'success', text: '已复活，欢迎回来 🌱'});
 	}
 
 	let editing = $state(false);
@@ -464,15 +493,30 @@
 	{:else if plant}
 		<section class="max-w-3xl mx-auto pt-4 pb-6">
 			<div class="text-center">
+				{#if plant.diedAt != null}
+					<div class="text-3xl mb-1">🪦</div>
+					<div class="text-xs text-leaf-600/60 mb-1">纪念碑</div>
+				{/if}
 				{#if plant.species}
 					<div class="text-sm text-leaf-600/70">{plant.species}</div>
 				{/if}
-				<div class="text-3xl font-light text-leaf-700 mt-1">
+				<div
+					class="text-3xl font-light mt-1"
+					class:text-leaf-700={plant.diedAt == null}
+					class:text-leaf-500={plant.diedAt != null}
+				>
 					陪伴 <span class="font-semibold">{daysSince(plant.acquiredAt)}</span> 天
 				</div>
 				<div class="text-xs text-leaf-600/60 mt-1">
 					{formatDay(plant.acquiredAt)} 起
 				</div>
+				{#if plant.diedAt != null}
+					<div class="text-xs text-leaf-600/70 mt-2">
+						{formatDay(plant.diedAt)} 离世
+						· 陪伴了 {daysSince(plant.diedAt) - 0} 天
+						（已 {daysSince(plant.diedAt)} 天）
+					</div>
+				{/if}
 				{#if plant.notes}
 					<div
 						class="mt-3 mx-auto max-w-xs text-sm text-leaf-700 bg-leaf-50 rounded-xl px-3 py-2 whitespace-pre-wrap"
@@ -480,12 +524,29 @@
 						{plant.notes}
 					</div>
 				{/if}
-				<button
-					onclick={handleDeletePlant}
-					class="mt-4 text-xs text-red-500/70 hover:text-red-600"
-				>
-					删除这株多肉
-				</button>
+				<div class="mt-4 flex justify-center gap-3 text-xs">
+					{#if plant.diedAt == null}
+						<button
+							onclick={handleMarkDead}
+							class="text-leaf-600/70 hover:text-leaf-700"
+						>
+							🪦 标记离世
+						</button>
+					{:else}
+						<button
+							onclick={handleRevive}
+							class="text-leaf-600/70 hover:text-leaf-700"
+						>
+							🌱 复活
+						</button>
+					{/if}
+					<button
+						onclick={handleDeletePlant}
+						class="text-red-500/70 hover:text-red-600"
+					>
+						删除
+					</button>
+				</div>
 			</div>
 		</section>
 
@@ -502,86 +563,111 @@
 				<p class="text-xs text-leaf-600/60 text-center mb-3">
 					时间倒序 · 点击照片浏览大图 · 底部生成成长长图
 				</p>
-				<div class="flex flex-col gap-2.5">
-					{#each sortedPhotos as photo (photo.id)}
-						{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
-						<div
-							class="relative group bg-leaf-900/90 rounded-xl overflow-hidden shadow-sm shadow-leaf-900/5"
-							role="button"
-							tabindex="0"
-							onclick={() => openLightbox(globalIdx)}
-							onkeydown={(e) => {
-								if (e.key === 'Enter' || e.key === ' ') {
-									e.preventDefault();
-									openLightbox(globalIdx);
-								}
-							}}
-						>
-							<!-- 微缩图：等比缩放，固定最大高度 160px，背景深色填空白 -->
-							<img
-								src={blobUrl(photo.id, 'thumb')}
-								alt=""
-								class="w-full max-h-40 object-contain"
-								loading="lazy"
-							/>
+				<div class="relative">
+					<!-- 左侧时间线 -->
+					<div
+						class="absolute left-[7px] top-3 bottom-3 w-0.5 bg-leaf-200"
+						aria-hidden="true"
+					></div>
 
-							<!-- 日期 + 操作（叠在图片底部，半透明背景） -->
-							<div
-								class="absolute inset-x-0 bottom-0 flex items-center justify-between px-2.5 py-1.5 text-[11px] text-white bg-gradient-to-t from-black/65 to-transparent"
-							>
-								<div class="flex items-center gap-1.5">
-									<span class="font-medium drop-shadow">{formatDay(photo.takenAt)}</span>
-									{#if photo.dateSource === 'exif'}
-										<span class="opacity-70 text-[10px] bg-white/15 px-1 py-px rounded">EXIF</span>
-									{/if}
-									{#if isSuspiciousDate(photo.takenAt)}
-										<span class="text-amber-300 text-[10px]">⚠</span>
-									{/if}
+					<div class="flex flex-col gap-3">
+						{#each sortedPhotos as photo (photo.id)}
+							{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
+							<div class="relative flex gap-3 pl-1">
+								<!-- 时间线节点 + 日期 -->
+								<div class="flex flex-col items-center pt-2 w-16 flex-shrink-0">
+									<div
+										class="w-3.5 h-3.5 rounded-full bg-leaf-500 ring-4 ring-soil-50 z-10"
+										aria-hidden="true"
+									></div>
+									<div class="text-[11px] text-leaf-700 mt-1 text-center leading-tight font-medium">
+										{formatDay(photo.takenAt)}
+									</div>
+									<div class="text-[10px] text-leaf-600/60 text-center leading-tight mt-0.5">
+										{formatRelativeTime(photo.takenAt)}
+									</div>
 								</div>
-								<div class="flex items-center gap-2">
+
+								<!-- 缩略图卡片：4:3 比例，object-cover 居中裁剪 -->
+								<div
+									class="relative group bg-white rounded-xl overflow-hidden shadow-sm shadow-leaf-900/5 flex-1"
+									role="button"
+									tabindex="0"
+									onclick={() => openLightbox(globalIdx)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											openLightbox(globalIdx);
+										}
+									}}
+								>
+									<div class="aspect-[4/3] overflow-hidden bg-leaf-50">
+										<img
+											src={blobUrl(photo.id, 'thumb')}
+											alt=""
+											class="w-full h-full object-cover"
+											loading="lazy"
+										/>
+									</div>
+
+									<!-- 日期 + 操作（叠在图片底部） -->
+									<div
+										class="absolute inset-x-0 bottom-0 flex items-center justify-between px-2 py-1 text-[10px] text-white bg-gradient-to-t from-black/65 to-transparent"
+									>
+										<div class="flex items-center gap-1">
+											{#if photo.dateSource === 'exif'}
+												<span class="opacity-70 bg-white/15 px-1 py-px rounded">EXIF</span>
+											{/if}
+											{#if isSuspiciousDate(photo.takenAt)}
+												<span class="text-amber-300">⚠</span>
+											{/if}
+										</div>
+										<div class="flex items-center gap-1.5">
+											<button
+												type="button"
+												onclick={(e) => {
+													e.stopPropagation();
+													editPhotoDate(photo);
+												}}
+												class="opacity-80 hover:opacity-100"
+												title="修改日期"
+											>
+												✎
+											</button>
+											<button
+												type="button"
+												onclick={(e) => {
+													e.stopPropagation();
+													handleDeletePhoto(photo.id);
+												}}
+												class="opacity-80 hover:opacity-100"
+												aria-label="删除"
+											>
+												✕
+											</button>
+										</div>
+									</div>
+
+									<!-- 拼接图勾选按钮 -->
 									<button
 										type="button"
 										onclick={(e) => {
 											e.stopPropagation();
-											editPhotoDate(photo);
+											toggleCompose(photo.id);
 										}}
-										class="opacity-80 hover:opacity-100"
-										title="修改日期"
+										class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shadow-md active:scale-95 transition"
+										class:bg-leaf-500={composeIds.has(photo.id)}
+										class:bg-black={!composeIds.has(photo.id)}
+										class:opacity-60={!composeIds.has(photo.id)}
+										aria-label={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
+										title={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
 									>
-										✎
-									</button>
-									<button
-										type="button"
-										onclick={(e) => {
-											e.stopPropagation();
-											handleDeletePhoto(photo.id);
-										}}
-										class="opacity-80 hover:opacity-100"
-										aria-label="删除"
-									>
-										✕
+										{composeIds.has(photo.id) ? '✓' : '○'}
 									</button>
 								</div>
 							</div>
-
-							<!-- 拼接图勾选按钮（图片右上角） -->
-							<button
-								type="button"
-								onclick={(e) => {
-									e.stopPropagation();
-									toggleCompose(photo.id);
-								}}
-								class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shadow-md active:scale-95 transition"
-								class:bg-leaf-500={composeIds.has(photo.id)}
-								class:bg-black={!composeIds.has(photo.id)}
-								class:opacity-60={!composeIds.has(photo.id)}
-								aria-label={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
-								title={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
-							>
-								{composeIds.has(photo.id) ? '✓' : '○'}
-							</button>
-						</div>
-					{/each}
+						{/each}
+					</div>
 				</div>
 			{/if}
 		</section>

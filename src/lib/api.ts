@@ -30,13 +30,15 @@ async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
 // ───────── Plants ─────────
 
 export const plantsApi = {
-	list: () => jsonFetch<PlantWithStats[]>('/api/plants'),
+	list: (mode: 'alive' | 'dead' | 'all' = 'all') =>
+		jsonFetch<PlantWithStats[]>(`/api/plants?mode=${mode}`),
 	get: (id: string) => jsonFetch<PlantWithStats>(`/api/plants/${id}`),
 	create: (input: {
 		name: string;
 		species?: string;
 		acquiredAt: number;
 		notes?: string;
+		diedAt?: number | null;
 	}) =>
 		jsonFetch<PlantWithStats>('/api/plants', {
 			method: 'POST',
@@ -44,7 +46,13 @@ export const plantsApi = {
 		}),
 	update: (
 		id: string,
-		patch: Partial<{name: string; species: string; acquiredAt: number; notes: string}>
+		patch: Partial<{
+			name: string;
+			species: string;
+			acquiredAt: number;
+			notes: string;
+			diedAt: number | null;
+		}>
 	) =>
 		jsonFetch<PlantWithStats>(`/api/plants/${id}`, {
 			method: 'PATCH',

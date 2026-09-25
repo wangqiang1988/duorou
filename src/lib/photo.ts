@@ -127,3 +127,39 @@ export function formatMonth(ts: number): string {
 export function daysSince(ts: number): number {
 	return Math.floor((Date.now() - ts) / 86400000);
 }
+
+/**
+ * 相对时间：「3 天前」「2 个月前」「1 年 2 个月前」
+ * 简化版：最大单位到「年」，年以下不再细分到天
+ */
+export function formatRelativeTime(ts: number, now: number = Date.now()): string {
+	const diff = now - ts;
+	if (diff < 0) return '未来';
+	const sec = Math.floor(diff / 1000);
+	if (sec < 60) return '刚刚';
+	const min = Math.floor(sec / 60);
+	if (min < 60) return `${min} 分钟前`;
+	const hr = Math.floor(min / 60);
+	if (hr < 24) return `${hr} 小时前`;
+
+	const day = Math.floor(hr / 24);
+	if (day < 30) {
+		if (day === 0) return '今天';
+		if (day === 1) return '昨天';
+		return `${day} 天前`;
+	}
+
+	const month = Math.floor(day / 30);
+	if (month < 12) {
+		const remainDay = day - month * 30;
+		if (remainDay === 0) return `${month} 个月前`;
+		return `${month} 个月 ${remainDay} 天前`;
+	}
+
+	const year = Math.floor(day / 365);
+	const remainDay = day - year * 365;
+	const remainMonth = Math.floor(remainDay / 30);
+	if (remainMonth === 0 && remainDay === 0) return `${year} 年前`;
+	if (remainMonth === 0) return `${year} 年 ${remainDay} 天前`;
+	return `${year} 年 ${remainMonth} 个月前`;
+}
