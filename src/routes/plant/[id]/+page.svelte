@@ -574,23 +574,17 @@ import {
 						{#each sortedPhotos as photo (photo.id)}
 							{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
 							<div class="relative flex gap-3 pl-1">
-								<!-- 时间线节点 + 日期 -->
-								<div class="flex flex-col items-center pt-2 w-16 flex-shrink-0">
+								<!-- 时间线节点 -->
+								<div class="flex flex-col items-center pt-2 w-4 flex-shrink-0">
 									<div
 										class="w-3.5 h-3.5 rounded-full bg-leaf-500 ring-4 ring-soil-50 z-10"
 										aria-hidden="true"
 									></div>
-									<div class="text-[11px] text-leaf-700 mt-1 text-center leading-tight font-medium">
-										{formatDay(photo.takenAt)}
-									</div>
-									<div class="text-[10px] text-leaf-600/60 text-center leading-tight mt-0.5">
-										{formatRelativeTime(photo.takenAt)}
-									</div>
 								</div>
 
-								<!-- 缩略图卡片：4:3 比例，object-cover 居中裁剪 -->
+								<!-- 缩略图（固定宽 96px，4:3 比例，点击进 lightbox） -->
 								<div
-									class="relative group bg-white rounded-xl overflow-hidden shadow-sm shadow-leaf-900/5 flex-1"
+									class="relative group bg-white rounded-lg overflow-hidden shadow-sm shadow-leaf-900/5 w-24 flex-shrink-0"
 									role="button"
 									tabindex="0"
 									onclick={() => openLightbox(globalIdx)}
@@ -610,44 +604,6 @@ import {
 										/>
 									</div>
 
-									<!-- 日期 + 操作（叠在图片底部） -->
-									<div
-										class="absolute inset-x-0 bottom-0 flex items-center justify-between px-2 py-1 text-[10px] text-white bg-gradient-to-t from-black/65 to-transparent"
-									>
-										<div class="flex items-center gap-1">
-											{#if photo.dateSource === 'exif'}
-												<span class="opacity-70 bg-white/15 px-1 py-px rounded">EXIF</span>
-											{/if}
-											{#if isSuspiciousDate(photo.takenAt)}
-												<span class="text-amber-300">⚠</span>
-											{/if}
-										</div>
-										<div class="flex items-center gap-1.5">
-											<button
-												type="button"
-												onclick={(e) => {
-													e.stopPropagation();
-													editPhotoDate(photo);
-												}}
-												class="opacity-80 hover:opacity-100"
-												title="修改日期"
-											>
-												✎
-											</button>
-											<button
-												type="button"
-												onclick={(e) => {
-													e.stopPropagation();
-													handleDeletePhoto(photo.id);
-												}}
-												class="opacity-80 hover:opacity-100"
-												aria-label="删除"
-											>
-												✕
-											</button>
-										</div>
-									</div>
-
 									<!-- 拼接图勾选按钮 -->
 									<button
 										type="button"
@@ -655,15 +611,61 @@ import {
 											e.stopPropagation();
 											toggleCompose(photo.id);
 										}}
-										class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full text-white text-xs flex items-center justify-center shadow-md active:scale-95 transition"
+										class="absolute top-1 right-1 w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shadow active:scale-95 transition"
 										class:bg-leaf-500={composeIds.has(photo.id)}
 										class:bg-black={!composeIds.has(photo.id)}
 										class:opacity-60={!composeIds.has(photo.id)}
-										aria-label={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
-										title={composeIds.has(photo.id) ? '已加入拼接图，点此移除' : '未加入拼接图，点此加入'}
+										aria-label={composeIds.has(photo.id) ? '已加入拼接图' : '未加入拼接图'}
+										title={composeIds.has(photo.id) ? '已加入拼接图' : '未加入拼接图'}
 									>
 										{composeIds.has(photo.id) ? '✓' : '○'}
 									</button>
+
+									<!-- EXIF / 可疑日期 角标 -->
+									{#if photo.dateSource === 'exif' || isSuspiciousDate(photo.takenAt)}
+										<div class="absolute bottom-1 left-1 flex gap-0.5">
+											{#if photo.dateSource === 'exif'}
+												<span class="text-[8px] bg-white/85 text-leaf-700 px-1 rounded">EXIF</span>
+											{/if}
+											{#if isSuspiciousDate(photo.takenAt)}
+												<span class="text-[8px] bg-amber-500 text-white px-1 rounded">⚠</span>
+											{/if}
+										</div>
+									{/if}
+								</div>
+
+								<!-- 右侧元信息 -->
+								<div class="flex-1 min-w-0 py-1 flex flex-col justify-between">
+									<div>
+										<div class="text-sm font-medium text-leaf-800 leading-tight">
+											{formatDay(photo.takenAt)}
+										</div>
+										<div class="text-xs text-leaf-600/70 mt-0.5">
+											{formatRelativeTime(photo.takenAt)}
+										</div>
+									</div>
+									<div class="flex items-center gap-2 mt-1.5">
+										<button
+											type="button"
+											onclick={(e) => {
+												e.stopPropagation();
+												editPhotoDate(photo);
+											}}
+											class="text-xs text-leaf-600/70 hover:text-leaf-800 active:opacity-60"
+										>
+											✎ 改日期
+										</button>
+										<button
+											type="button"
+											onclick={(e) => {
+												e.stopPropagation();
+												handleDeletePhoto(photo.id);
+											}}
+											class="text-xs text-red-500/70 hover:text-red-600 active:opacity-60"
+										>
+											✕ 删除
+										</button>
+									</div>
 								</div>
 							</div>
 						{/each}
