@@ -18,6 +18,8 @@ export interface PlantWithStats extends Plant {
 	coverPhotoId: ID | null;
 }
 
+export type PhotoKind = 'photo' | 'text';
+
 export interface Photo {
 	id: ID;
 	plantId: ID;
@@ -27,6 +29,8 @@ export interface Photo {
 	caption: string;
 	mime: string;
 	dateSource: DateSource;
+	kind: PhotoKind;
+	content: string;
 	sizeOrig: number;
 	sizeMedium: number;
 	sizeThumb: number;

@@ -115,6 +115,80 @@ import {
 		closeMenu();
 		galleryRef?.click();
 	}
+	function pickText() {
+		closeMenu();
+		openTextEditor(null);
+	}
+
+	let textEditorOpen = $state(false);
+	let textEditorContent = $state('');
+	let textEditorDate = $state('');
+	let editingEntryId = $state<string | null>(null);
+	let textSaving = $state(false);
+
+	function openTextEditor(entry: Photo | null) {
+		editingEntryId = entry?.id ?? null;
+		textEditorContent = entry?.content ?? '';
+		textEditorDate = entry ? formatDay(entry.takenAt) : formatDay(Date.now());
+		textEditorOpen = true;
+	}
+
+	function closeTextEditor() {
+		textEditorOpen = false;
+		textEditorContent = '';
+		editingEntryId = null;
+	}
+
+	async function saveTextEntry() {
+		if (!plantId) return;
+		const content = textEditorContent.trim();
+		if (!content) {
+			showToast({kind: 'error', text: '内容不能为空'});
+			return;
+		}
+		const d = new Date(textEditorDate + 'T12:00:00');
+		if (isNaN(d.getTime())) {
+			showToast({kind: 'error', text: '日期格式无效'});
+			return;
+		}
+		textSaving = true;
+		try {
+			if (editingEntryId) {
+				await updatePhoto(editingEntryId, plantId, {
+					content,
+					takenAt: d.getTime()
+				});
+				showToast({kind: 'success', text: '已更新'});
+			} else {
+				await addPhoto({
+					plantId,
+					takenAt: d.getTime(),
+					width: 0,
+					height: 0,
+					mime: 'text/plain',
+					dateSource: 'now',
+					kind: 'text',
+					content
+				});
+				showToast({kind: 'success', text: '已添加文字'});
+			}
+			closeTextEditor();
+			await refresh();
+		} catch (err) {
+			showToast({kind: 'error', text: '保存失败：' + (err as Error).message});
+		} finally {
+			textSaving = false;
+		}
+	}
+
+	async function deleteEntry(entry: Photo) {
+		const msg = entry.kind === 'text' ? '删除这段文字？' : '删除这张照片？';
+		if (!confirm(msg)) return;
+		if (!confirm('确认删除？')) return;
+		await deletePhoto(entry.id, plantId);
+		if (textEditorOpen && editingEntryId === entry.id) closeTextEditor();
+		await refresh();
+	}
 
 	async function handleFiles(e: Event) {
 		if (!plantId) return;
@@ -381,6 +455,67 @@ import {
 	ontoggle={toggleCompose}
 />
 
+<!-- 添加 / 编辑文字：底部抽屉 -->
+{#if textEditorOpen}
+	<button
+		type="button"
+		aria-label="关闭文字编辑"
+		onclick={closeTextEditor}
+		class="fixed inset-0 z-40 bg-black/40"
+	></button>
+
+	<div
+		class="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl pb-safe pt-3 px-4 max-h-[85vh] overflow-y-auto animate-pop-in"
+		role="dialog"
+		aria-modal="true"
+	>
+		<div class="w-10 h-1 bg-leaf-200 rounded-full mx-auto mb-3"></div>
+		<h3 class="text-base font-semibold text-leaf-800 mb-3">
+			{editingEntryId ? '✎ 编辑文字' : '📝 写一段'}
+		</h3>
+
+		<label class="block mb-3">
+			<span class="text-xs text-leaf-600/70">日期</span>
+			<input
+				type="date"
+				bind:value={textEditorDate}
+				class="mt-1 w-full px-3 py-2.5 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm"
+			/>
+		</label>
+
+		<label class="block">
+			<span class="text-xs text-leaf-600/70">内容</span>
+			<textarea
+				bind:value={textEditorContent}
+				class="mt-1 w-full px-3 py-2.5 rounded-xl bg-leaf-50 border border-leaf-100 focus:border-leaf-400 focus:outline-none text-sm min-h-32 resize-none"
+				placeholder="今天浇了水，发现新叶展开了……"
+				maxlength="2000"
+			></textarea>
+			<div class="text-[10px] text-leaf-600/50 mt-1 text-right">
+				{textEditorContent.length} / 2000
+			</div>
+		</label>
+
+		<div class="flex gap-2 mt-4">
+			<button
+				type="button"
+				onclick={closeTextEditor}
+				class="flex-1 py-2.5 rounded-full border border-leaf-200 text-leaf-700 text-sm active:bg-leaf-50"
+			>
+				取消
+			</button>
+			<button
+				type="button"
+				onclick={saveTextEntry}
+				disabled={textSaving}
+				class="flex-1 py-2.5 rounded-full bg-leaf-600 text-white text-sm font-medium active:bg-leaf-700 disabled:opacity-50"
+			>
+				{textSaving ? '保存中…' : '保存'}
+			</button>
+		</div>
+	</div>
+{/if}
+
 <!-- 编辑植物：底部抽屉 -->
 {#if editing}
 	<button
@@ -573,100 +708,147 @@ import {
 					<div class="flex flex-col gap-3">
 						{#each sortedPhotos as photo (photo.id)}
 							{@const globalIdx = sortedPhotos.findIndex((p) => p.id === photo.id)}
+							{@const isText = photo.kind === 'text'}
 							<div class="relative flex gap-3 pl-1">
 								<!-- 时间线节点 -->
 								<div class="flex flex-col items-center pt-2 w-4 flex-shrink-0">
-									<div
-										class="w-3.5 h-3.5 rounded-full bg-leaf-500 ring-4 ring-soil-50 z-10"
-										aria-hidden="true"
-									></div>
-								</div>
-
-								<!-- 缩略图（固定宽 96px，4:3 比例，点击进 lightbox） -->
-								<div
-									class="relative group bg-white rounded-lg overflow-hidden shadow-sm shadow-leaf-900/5 w-24 flex-shrink-0"
-									role="button"
-									tabindex="0"
-									onclick={() => openLightbox(globalIdx)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											openLightbox(globalIdx);
-										}
-									}}
-								>
-									<div class="aspect-[4/3] overflow-hidden bg-leaf-50">
-										<img
-											src={blobUrl(photo.id, 'thumb')}
-											alt=""
-											class="w-full h-full object-cover"
-											loading="lazy"
-										/>
-									</div>
-
-									<!-- 拼接图勾选按钮 -->
-									<button
-										type="button"
-										onclick={(e) => {
-											e.stopPropagation();
-											toggleCompose(photo.id);
-										}}
-										class="absolute top-1 right-1 w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shadow active:scale-95 transition"
-										class:bg-leaf-500={composeIds.has(photo.id)}
-										class:bg-black={!composeIds.has(photo.id)}
-										class:opacity-60={!composeIds.has(photo.id)}
-										aria-label={composeIds.has(photo.id) ? '已加入拼接图' : '未加入拼接图'}
-										title={composeIds.has(photo.id) ? '已加入拼接图' : '未加入拼接图'}
-									>
-										{composeIds.has(photo.id) ? '✓' : '○'}
-									</button>
-
-									<!-- EXIF / 可疑日期 角标 -->
-									{#if photo.dateSource === 'exif' || isSuspiciousDate(photo.takenAt)}
-										<div class="absolute bottom-1 left-1 flex gap-0.5">
-											{#if photo.dateSource === 'exif'}
-												<span class="text-[8px] bg-white/85 text-leaf-700 px-1 rounded">EXIF</span>
-											{/if}
-											{#if isSuspiciousDate(photo.takenAt)}
-												<span class="text-[8px] bg-amber-500 text-white px-1 rounded">⚠</span>
-											{/if}
-										</div>
+									{#if isText}
+										<div
+											class="w-3.5 h-3.5 rounded-sm bg-amber-500 ring-4 ring-soil-50 z-10 rotate-45"
+											aria-hidden="true"
+										></div>
+									{:else}
+										<div
+											class="w-3.5 h-3.5 rounded-full bg-leaf-500 ring-4 ring-soil-50 z-10"
+											aria-hidden="true"
+										></div>
 									{/if}
 								</div>
 
-								<!-- 右侧元信息 -->
-								<div class="flex-1 min-w-0 py-1 flex flex-col justify-between">
-									<div>
-										<div class="text-sm font-medium text-leaf-800 leading-tight">
-											{formatDay(photo.takenAt)}
+								{#if isText}
+									<!-- 文字条目卡片：米黄背景，全宽 -->
+									<div class="flex-1 min-w-0 bg-amber-50 rounded-lg p-3 shadow-sm shadow-leaf-900/5">
+										<div class="flex items-center justify-between mb-1.5">
+											<div class="flex items-center gap-1.5 text-xs text-amber-800">
+												<span>📝</span>
+												<span class="font-medium">{formatDay(photo.takenAt)}</span>
+												<span class="text-amber-700/60">· {formatRelativeTime(photo.takenAt)}</span>
+											</div>
+											<div class="flex items-center gap-2">
+												<button
+													type="button"
+													onclick={() => editPhotoDate(photo)}
+													class="text-xs text-amber-700/70 hover:text-amber-900 active:opacity-60"
+												>
+													✎ 改日期
+												</button>
+												<button
+													type="button"
+													onclick={() => openTextEditor(photo)}
+													class="text-xs text-leaf-700 hover:text-leaf-900 active:opacity-60"
+												>
+													✎ 编辑
+												</button>
+												<button
+													type="button"
+													onclick={() => deleteEntry(photo)}
+													class="text-xs text-red-500/70 hover:text-red-600 active:opacity-60"
+												>
+													✕ 删除
+												</button>
+											</div>
 										</div>
-										<div class="text-xs text-leaf-600/70 mt-0.5">
-											{formatRelativeTime(photo.takenAt)}
+										<div class="text-sm text-leaf-800 whitespace-pre-wrap leading-relaxed">
+											{photo.content}
 										</div>
 									</div>
-									<div class="flex items-center gap-2 mt-1.5">
+								{:else}
+									<!-- 缩略图（固定宽 96px，4:3 比例，点击进 lightbox） -->
+									<div
+										class="relative group bg-white rounded-lg overflow-hidden shadow-sm shadow-leaf-900/5 w-24 flex-shrink-0"
+										role="button"
+										tabindex="0"
+										onclick={() => openLightbox(globalIdx)}
+										onkeydown={(e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.preventDefault();
+												openLightbox(globalIdx);
+											}
+										}}
+									>
+										<div class="aspect-[4/3] overflow-hidden bg-leaf-50">
+											<img
+												src={blobUrl(photo.id, 'thumb')}
+												alt=""
+												class="w-full h-full object-cover"
+												loading="lazy"
+											/>
+										</div>
+
+										<!-- 拼接图勾选按钮 -->
 										<button
 											type="button"
 											onclick={(e) => {
 												e.stopPropagation();
-												editPhotoDate(photo);
+												toggleCompose(photo.id);
 											}}
-											class="text-xs text-leaf-600/70 hover:text-leaf-800 active:opacity-60"
+											class="absolute top-1 right-1 w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center shadow active:scale-95 transition"
+											class:bg-leaf-500={composeIds.has(photo.id)}
+											class:bg-black={!composeIds.has(photo.id)}
+											class:opacity-60={!composeIds.has(photo.id)}
+											aria-label={composeIds.has(photo.id) ? '已加入拼接图' : '未加入拼接图'}
+											title={composeIds.has(photo.id) ? '已加入拼接图' : '未加入拼接图'}
 										>
-											✎ 改日期
+											{composeIds.has(photo.id) ? '✓' : '○'}
 										</button>
-										<button
-											type="button"
-											onclick={(e) => {
-												e.stopPropagation();
-												handleDeletePhoto(photo.id);
-											}}
-											class="text-xs text-red-500/70 hover:text-red-600 active:opacity-60"
-										>
-											✕ 删除
-										</button>
+
+										<!-- EXIF / 可疑日期 角标 -->
+										{#if photo.dateSource === 'exif' || isSuspiciousDate(photo.takenAt)}
+											<div class="absolute bottom-1 left-1 flex gap-0.5">
+												{#if photo.dateSource === 'exif'}
+													<span class="text-[8px] bg-white/85 text-leaf-700 px-1 rounded">EXIF</span>
+												{/if}
+												{#if isSuspiciousDate(photo.takenAt)}
+													<span class="text-[8px] bg-amber-500 text-white px-1 rounded">⚠</span>
+												{/if}
+											</div>
+										{/if}
 									</div>
-								</div>
+
+									<!-- 右侧元信息 -->
+									<div class="flex-1 min-w-0 py-1 flex flex-col justify-between">
+										<div>
+											<div class="text-sm font-medium text-leaf-800 leading-tight">
+												{formatDay(photo.takenAt)}
+											</div>
+											<div class="text-xs text-leaf-600/70 mt-0.5">
+												{formatRelativeTime(photo.takenAt)}
+											</div>
+										</div>
+										<div class="flex items-center gap-2 mt-1.5">
+											<button
+												type="button"
+												onclick={(e) => {
+													e.stopPropagation();
+													editPhotoDate(photo);
+												}}
+												class="text-xs text-leaf-600/70 hover:text-leaf-800 active:opacity-60"
+											>
+												✎ 改日期
+											</button>
+											<button
+												type="button"
+												onclick={(e) => {
+													e.stopPropagation();
+													handleDeletePhoto(photo.id);
+												}}
+												class="text-xs text-red-500/70 hover:text-red-600 active:opacity-60"
+											>
+												✕ 删除
+											</button>
+										</div>
+									</div>
+								{/if}
 							</div>
 						{/each}
 					</div>
@@ -737,6 +919,18 @@ import {
 					<div>
 						<div class="font-medium">从相册选</div>
 						<div class="text-[11px] text-leaf-600/60">可多选</div>
+					</div>
+				</button>
+				<div class="border-t border-leaf-100"></div>
+				<button
+					type="button"
+					onclick={pickText}
+					class="flex items-center gap-3 px-4 py-3 w-full text-left text-sm text-leaf-800 hover:bg-leaf-50 active:bg-leaf-100"
+				>
+					<span class="text-xl">📝</span>
+					<div>
+						<div class="font-medium">写段文字</div>
+						<div class="text-[11px] text-leaf-600/60">记录心情/笔记</div>
 					</div>
 				</button>
 			</div>

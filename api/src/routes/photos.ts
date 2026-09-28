@@ -28,7 +28,7 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 		return rowToPhoto(row);
 	});
 
-	// 上传：multipart 字段：file(原图)、thumb、medium、plantId、takenAt、width、height、mime、dateSource
+	// 上传：multipart 字段：file(原图)、thumb、medium、plantId、takenAt、width、height、mime、dateSource、kind、content
 	app.post('/api/photos', async (req, reply) => {
 		let plantId = '';
 		let takenAt = 0;
@@ -36,6 +36,8 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 		let height = 0;
 		let mime = 'image/jpeg';
 		let dateSource: 'exif' | 'file' | 'now' = 'now';
+		let kind: 'photo' | 'text' = 'photo';
+		let content = '';
 		const id = nanoid(16);
 		let origBuf: Buffer | null = null;
 		let mediumBuf: Buffer | null = null;
@@ -59,25 +61,38 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 				else if (part.fieldname === 'mime') mime = String(part.value);
 				else if (part.fieldname === 'dateSource')
 					dateSource = String(part.value) as typeof dateSource;
+				else if (part.fieldname === 'kind') {
+					const v = String(part.value);
+					if (v === 'text' || v === 'photo') kind = v;
+				} else if (part.fieldname === 'content') {
+					content = String(part.value);
+				}
 			}
 		}
 
 		if (!plantId) return reply.code(400).send({ error: 'plantId required' });
-		if (!origBuf) return reply.code(400).send({ error: 'file required' });
+
+		if (kind === 'text') {
+			if (!content.trim()) return reply.code(400).send({ error: 'content required' });
+		} else {
+			if (!origBuf) return reply.code(400).send({ error: 'file required' });
+		}
 
 		// 校验植物存在
 		const plant = db.prepare('SELECT id FROM plants WHERE id = ?').get(plantId);
 		if (!plant) return reply.code(404).send({ error: 'plant not found' });
 
-		await writePhotoBlob(id, 'orig', origBuf);
-		if (mediumBuf) await writePhotoBlob(id, 'medium', mediumBuf);
-		if (thumbBuf) await writePhotoBlob(id, 'thumb', thumbBuf);
+		if (kind === 'photo') {
+			await writePhotoBlob(id, 'orig', origBuf!);
+			if (mediumBuf) await writePhotoBlob(id, 'medium', mediumBuf);
+			if (thumbBuf) await writePhotoBlob(id, 'thumb', thumbBuf);
+		}
 
 		const now = Date.now();
 		db.prepare(
 			`INSERT INTO photos (id, plant_id, taken_at, width, height, caption, mime, date_source,
-			                    size_orig, size_medium, size_thumb, created_at)
-			 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)`
+			                    kind, content, size_orig, size_medium, size_thumb, created_at)
+			 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)`
 		).run(
 			id,
 			plantId,
@@ -86,7 +101,9 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 			height,
 			mime,
 			dateSource,
-			origBuf.length,
+			kind,
+			content,
+			kind === 'photo' ? origBuf!.length : 0,
 			mediumBuf?.length ?? 0,
 			thumbBuf?.length ?? 0,
 			now
@@ -123,17 +140,20 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 	// 修改元数据（takenAt / caption）
 	app.patch<{
 		Params: { id: string };
-		Body: { takenAt?: number; caption?: string };
+		Body: { takenAt?: number; caption?: string; content?: string };
 	}>('/api/photos/:id', async (req, reply) => {
 		const existing = db
 			.prepare('SELECT * FROM photos WHERE id = ?')
 			.get(req.params.id) as PhotoRow | undefined;
 		if (!existing) return reply.code(404).send({ error: 'not found' });
 
-		const { takenAt, caption } = req.body ?? {};
+		const { takenAt, caption, content } = req.body ?? {};
+		const patchTaken = takenAt ?? existing.taken_at;
+		const patchCaption = caption ?? existing.caption;
+		const patchContent = content ?? existing.content;
 		db.prepare(
-			`UPDATE photos SET taken_at = ?, caption = ? WHERE id = ?`
-		).run(takenAt ?? existing.taken_at, caption ?? existing.caption, req.params.id);
+			`UPDATE photos SET taken_at = ?, caption = ?, content = ? WHERE id = ?`
+		).run(patchTaken, patchCaption, patchContent, req.params.id);
 
 		return rowToPhoto(
 			db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id) as PhotoRow

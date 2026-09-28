@@ -52,7 +52,9 @@ export async function addPhoto(input: {
 	height: number;
 	mime: string;
 	dateSource: 'exif' | 'file' | 'now';
-	orig: Blob;
+	kind?: 'photo' | 'text';
+	content?: string;
+	orig?: Blob;
 	medium?: Blob;
 	thumb?: Blob;
 }): Promise<Photo> {
@@ -64,7 +66,7 @@ export async function addPhoto(input: {
 export async function updatePhoto(
 	id: string,
 	_plantId: string,
-	patch: Partial<{takenAt: number; caption: string}>
+	patch: Partial<{takenAt: number; caption: string; content: string}>
 ): Promise<void> {
 	await photosApi.update(id, patch);
 }

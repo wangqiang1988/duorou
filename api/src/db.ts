@@ -19,7 +19,7 @@ db.pragma('foreign_keys = ON');
  * 用 PRAGMA user_version 追踪当前 schema 版本
  * 每次升级只需要在 MIGRATIONS 列表追加新版本
  */
-const TARGET_SCHEMA_VERSION = 2;
+const TARGET_SCHEMA_VERSION = 3;
 
 interface Migration {
 	version: number;
@@ -77,6 +77,26 @@ const MIGRATIONS: Migration[] = [
 				'CREATE INDEX IF NOT EXISTS idx_plants_died ON plants(died_at)'
 			);
 		}
+	},
+	{
+		version: 3,
+		up: () => {
+			// photos 加 kind (photo/text) + content (text 用) + 索引
+			const cols = db
+				.prepare("PRAGMA table_info(photos)")
+				.all() as Array<{name: string}>;
+			if (!cols.some((c) => c.name === 'kind')) {
+				db.exec(
+					"ALTER TABLE photos ADD COLUMN kind TEXT NOT NULL DEFAULT 'photo'"
+				);
+			}
+			if (!cols.some((c) => c.name === 'content')) {
+				db.exec('ALTER TABLE photos ADD COLUMN content TEXT NOT NULL DEFAULT ""');
+			}
+			db.exec(
+				'CREATE INDEX IF NOT EXISTS idx_photos_kind ON photos(kind)'
+			);
+		}
 	}
 ];
 
@@ -124,6 +144,8 @@ export interface PhotoRow {
 	caption: string;
 	mime: string;
 	date_source: 'exif' | 'file' | 'now';
+	kind: 'photo' | 'text';
+	content: string;
 	size_orig: number;
 	size_medium: number;
 	size_thumb: number;
@@ -153,6 +175,8 @@ export function rowToPhoto(r: PhotoRow) {
 		caption: r.caption,
 		mime: r.mime,
 		dateSource: r.date_source,
+		kind: r.kind,
+		content: r.content,
 		sizeOrig: r.size_orig,
 		sizeMedium: r.size_medium,
 		sizeThumb: r.size_thumb,

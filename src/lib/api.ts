@@ -77,7 +77,9 @@ export const photosApi = {
 		height: number;
 		mime: string;
 		dateSource: 'exif' | 'file' | 'now';
-		orig: Blob;
+		kind?: 'photo' | 'text';
+		content?: string;
+		orig?: Blob;
 		medium?: Blob;
 		thumb?: Blob;
 	}): Promise<Photo> => {
@@ -88,13 +90,18 @@ export const photosApi = {
 		fd.append('height', String(params.height));
 		fd.append('mime', params.mime);
 		fd.append('dateSource', params.dateSource);
-		fd.append('file', params.orig, 'photo.bin');
+		fd.append('kind', params.kind ?? 'photo');
+		if (params.content) fd.append('content', params.content);
+		if (params.orig) fd.append('file', params.orig, 'photo.bin');
 		if (params.medium) fd.append('medium', params.medium, 'medium.bin');
 		if (params.thumb) fd.append('thumb', params.thumb, 'thumb.bin');
 		return jsonFetch<Photo>('/api/photos', {method: 'POST', body: fd});
 	},
 
-	update: (id: string, patch: {takenAt?: number; caption?: string}) =>
+	update: (
+		id: string,
+		patch: {takenAt?: number; caption?: string; content?: string}
+	) =>
 		jsonFetch<Photo>(`/api/photos/${id}`, {
 			method: 'PATCH',
 			body: JSON.stringify(patch)
