@@ -103,11 +103,13 @@ duorou/
 │   ├── meta.sqlite                          # SQLite 数据库
 │   └── photos/<id 前2>/<id>.<thumb|medium|orig>.bin
 │
+├── duorou.png                                 # 项目图标源图（1254×1254，仓库根）
 └── static/                                  # PWA 静态资源
-    ├── favicon.svg                          # 站点图标（SVG）
-    ├── icon-192.png / icon-512.png          # PWA 图标
-    ├── icon-512-maskable.png                # PWA 启动图标（maskable）
-    └── _gen-icons.py                        # 图标生成脚本（python3 PIL）
+    ├── favicon.png                            # 站点图标（64×64 PNG）
+    ├── apple-touch-icon-180x180.png           # iOS 主屏幕图标（180×180 必备）
+    ├── icon-192.png / icon-512.png            # PWA 图标（manifest）
+    ├── icon-512-maskable.png                  # PWA 启动图标（maskable，缩到 80% 居中）
+    └── _gen-icons.py                          # 图标生成脚本：从 ../duorou.png 重新生成
 ```
 
 ---
@@ -415,6 +417,8 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 | **text 条目不参与拼接图** | 拼接图是照片场景，文字混入会很奇怪 |
 | **`?v=thumb/medium/orig` 三档** | 列表用 thumb 省带宽；详情用 medium；lightbox 用 orig |
 | **dev proxy `/api → localhost:3011`** | 同源避免 CORS；nginx 反代同样路径 |
+| **iOS 主屏幕图标走 `apple-touch-icon-180x180`** | iOS 不读 manifest 的 `icons`；必须 `<link rel="apple-touch-icon">` + 180×180 最佳 |
+| **iOS PWA 换图标要删了重加** | iOS 把已添加的图标缓存到本地，服务端更新不生效 |
 
 ---
 
@@ -479,6 +483,8 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 
 | Commit | 说明 |
 |---|---|
+| `d557640` | 添加 apple-touch-icon-180x180，iOS 主屏幕图标 |
+| `91ad403` | 替换项目图标为 duorou.png |
 | `87b939b` | 时间线支持文字条目（kind=text）|
 | `9c18063` | 设置页可自定义应用名称 |
 | `e60d576` | 缩略图缩小约 1/8，重构为左侧小图 + 右侧元信息 |
