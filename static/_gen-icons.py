@@ -5,7 +5,7 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SRC = os.path.join(ROOT, 'duorou.png')
+SRC = os.path.join(ROOT, 'icon.png')
 
 
 def main() -> None:

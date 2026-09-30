@@ -103,13 +103,13 @@ duorou/
 │   ├── meta.sqlite                          # SQLite 数据库
 │   └── photos/<id 前2>/<id>.<thumb|medium|orig>.bin
 │
-├── duorou.png                                 # 项目图标源图（1254×1254，仓库根）
+├── icon.png                                   # 项目图标源图（仓库根）
 └── static/                                  # PWA 静态资源
     ├── favicon.png                            # 站点图标（64×64 PNG）
     ├── apple-touch-icon-180x180.png           # iOS 主屏幕图标（180×180 必备）
     ├── icon-192.png / icon-512.png            # PWA 图标（manifest）
     ├── icon-512-maskable.png                  # PWA 启动图标（maskable，缩到 80% 居中）
-    └── _gen-icons.py                          # 图标生成脚本：从 ../duorou.png 重新生成
+    └── _gen-icons.py                          # 图标生成脚本：从 ../icon.png 重新生成
 ```
 
 ---
@@ -483,6 +483,7 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 
 | Commit | 说明 |
 |---|---|
+| `91ad403` | 替换项目图标为 icon.png（粉樱多肉）|
 | `d557640` | 添加 apple-touch-icon-180x180，iOS 主屏幕图标 |
 | `91ad403` | 替换项目图标为 duorou.png |
 | `87b939b` | 时间线支持文字条目（kind=text）|
