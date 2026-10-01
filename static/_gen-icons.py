@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """从 icon.png 生成 PWA 图标。
 
-约定：icon.png 应当是「已裁剪透明边距、内容填满画布」的源图。
-如果源图含透明边距，会先做一次裁剪 + 重新填充满画布的预处理，
-以避免 iOS 主屏图标因透明区域露出底色而出现「白边」。
+约定：icon.png 是源图。若源图有透明边距或带圆角的非透明背景，
+都会先做归一化（裁掉透明 bbox + 延伸背景色到画布四角），
+避免 iOS 主屏图标因透明区域露出底色而出现「白边」。
 """
 import os
+from collections import Counter
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -14,19 +15,16 @@ SRC = os.path.join(ROOT, 'icon.png')
 
 
 def fit_to_canvas(img: Image.Image, target: int, safe_ratio: float = 1.0) -> Image.Image:
-    """把图等比缩放到 target 边长，再按 safe_ratio 留安全边距居中放置。
+    """等比缩放到 target 边长居中放置，留 safe_ratio 安全边距（1.0 = 贴满）。
 
-    safe_ratio=1.0 表示贴满；0.85 = 留 7.5% 安全边距（防 iOS 圆角裁切）。
+    透明画布用于不会出现在 iOS 主屏位置的图标（favicon / 192 / 512 / maskable），
+    主屏用的 apple-touch-icon 另走 fill_canvas()。
     """
     canvas = Image.new('RGBA', (target, target), (0, 0, 0, 0))
-    if safe_ratio >= 1.0:
-        resized = img.resize((target, target), Image.LANCZOS)
-        canvas.paste(resized, (0, 0))
-        return canvas
-
     inner = int(target * safe_ratio)
     scale = inner / max(img.size)
-    nw, nh = int(round(img.size[0] * scale)), int(round(img.size[1] * scale))
+    nw = int(round(img.size[0] * scale))
+    nh = int(round(img.size[1] * scale))
     resized = img.resize((nw, nh), Image.LANCZOS)
     ox = (target - nw) // 2
     oy = (target - nh) // 2
@@ -34,27 +32,46 @@ def fit_to_canvas(img: Image.Image, target: int, safe_ratio: float = 1.0) -> Ima
     return canvas
 
 
-def normalize_source(src_path: str, target: int = 1024) -> Image.Image:
-    """加载源图，裁掉透明边距，等比缩放到正方形画布（贴满）。"""
-    img = Image.open(src_path).convert('RGBA')
+def fill_canvas(img: Image.Image, target: int = 1024) -> Image.Image:
+    """把图填满正方形画布：先裁透明 bbox，再延伸背景色覆盖所有透明像素。
+
+    适用于 iOS 主屏图标（apple-touch-icon）：必须 100% 不透明，
+    否则透明区域会露出主屏壁纸底色，看起来就是「白边」。
+    """
     bbox = img.getbbox()
-    if bbox:
-        cropped = img.crop(bbox)
-    else:
-        cropped = img
-    return fit_to_canvas(cropped, target, safe_ratio=1.0)
+    cropped = img.crop(bbox) if bbox else img
+    cw, ch = cropped.size
+
+    sample_h = max(2, ch // 16)
+    top_strip = cropped.crop((0, 0, cw, sample_h))
+    bottom_strip = cropped.crop((0, ch - sample_h, cw, ch))
+    top_color = Counter(p for p in top_strip.getdata() if p[3] > 200).most_common(1)[0][0]
+    bottom_color = Counter(p for p in bottom_strip.getdata() if p[3] > 200).most_common(1)[0][0]
+
+    scaled = cropped.resize((target, target), Image.LANCZOS)
+
+    bg = Image.new('RGBA', (target, target))
+    for y in range(target):
+        t = y / (target - 1)
+        r = int(top_color[0] * (1 - t) + bottom_color[0] * t)
+        g = int(top_color[1] * (1 - t) + bottom_color[1] * t)
+        b = int(top_color[2] * (1 - t) + bottom_color[2] * t)
+        for x in range(target):
+            bg.putpixel((x, y), (r, g, b, 255))
+
+    return Image.alpha_composite(bg, scaled)
 
 
 def main() -> None:
-    base = normalize_source(SRC)
-    print(f'  base normalized: {base.size}')
+    base = fill_canvas(Image.open(SRC).convert('RGBA'))
+    print(f'  base filled: {base.size}')
 
-    base.resize((192, 192), Image.LANCZOS).save(
+    fit_to_canvas(base, 192).save(
         os.path.join(HERE, 'icon-192.png'), 'PNG', optimize=True
     )
     print('  -> icon-192.png (192x192)')
 
-    base.resize((512, 512), Image.LANCZOS).save(
+    fit_to_canvas(base, 512).save(
         os.path.join(HERE, 'icon-512.png'), 'PNG', optimize=True
     )
     print('  -> icon-512.png (512x512)')
@@ -62,17 +79,17 @@ def main() -> None:
     fit_to_canvas(base, 512, safe_ratio=0.85).save(
         os.path.join(HERE, 'icon-512-maskable.png'), 'PNG', optimize=True
     )
-    print('  -> icon-512-maskable.png (512x512, 85% safe zone)')
+    print('  -> icon-512-maskable.png (512x512, 85% safe zone, transparent corners OK)')
 
-    base.resize((64, 64), Image.LANCZOS).save(
+    fit_to_canvas(base, 64).save(
         os.path.join(HERE, 'favicon.png'), 'PNG', optimize=True
     )
     print('  -> favicon.png (64x64)')
 
-    fit_to_canvas(base, 180, safe_ratio=0.92).save(
+    fit_to_canvas(base, 180).save(
         os.path.join(HERE, 'apple-touch-icon-180x180.png'), 'PNG', optimize=True
     )
-    print('  -> apple-touch-icon-180x180.png (180x180, 92% safe zone)')
+    print('  -> apple-touch-icon-180x180.png (180x180, full bleed — iOS crops corners)')
 
 
 if __name__ == '__main__':
