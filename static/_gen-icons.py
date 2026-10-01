@@ -33,10 +33,11 @@ def main() -> None:
     )
     print('  -> favicon.png (64x64)')
 
-    img.resize((180, 180), Image.LANCZOS).save(
-        os.path.join(HERE, 'apple-touch-icon-180x180.png'), 'PNG', optimize=True
-    )
-    print('  -> apple-touch-icon-180x180.png (180x180)')
+    apple = Image.new('RGBA', (180, 180), (124, 154, 110, 255))
+    apple_inner = img.resize((158, 158), Image.LANCZOS)
+    apple.paste(apple_inner, (11, 11), apple_inner)
+    apple.save(os.path.join(HERE, 'apple-touch-icon-180x180.png'), 'PNG', optimize=True)
+    print('  -> apple-touch-icon-180x180.png (180x180, brand-green bg)')
 
 
 if __name__ == '__main__':
