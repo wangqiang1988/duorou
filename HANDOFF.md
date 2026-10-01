@@ -418,6 +418,8 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 | **`?v=thumb/medium/orig` 三档** | 列表用 thumb 省带宽；详情用 medium；lightbox 用 orig |
 | **dev proxy `/api → localhost:3011`** | 同源避免 CORS；nginx 反代同样路径 |
 | **iOS 主屏幕图标走 `apple-touch-icon-180x180`** | iOS 不读 manifest 的 `icons`；必须 `<link rel="apple-touch-icon">` + 180×180 最佳 |
+| **图标源图不能含透明边距** | iOS 不给图标加白边/光泽（iOS 7+ 早已去掉），主屏上看到的「白边」其实是源图透明区域露出壁纸底色。`_gen-icons.py` 的 `normalize_source()` 会先裁掉 bbox 再贴满画布，避免再踩这个坑 |
+| **`<link rel="apple-touch-icon-precomposed">` 也声明一份** | 旧 iOS 兼容性兜底；现代 iOS 与 `apple-touch-icon` 行为一致，但声明了无副作用 |
 | **iOS PWA 换图标要删了重加** | iOS 把已添加的图标缓存到本地，服务端更新不生效 |
 
 ---
@@ -483,6 +485,7 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 
 | Commit | 说明 |
 |---|---|
+| (本次) | iOS 主屏图标裁掉透明边距避免白边 + apple-touch-icon-precomposed |
 | `91ad403` | 替换项目图标为 icon.png（粉樱多肉）|
 | `d557640` | 添加 apple-touch-icon-180x180，iOS 主屏幕图标 |
 | `91ad403` | 替换项目图标为 duorou.png |
