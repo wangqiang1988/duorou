@@ -151,7 +151,7 @@ export interface Photo {
 // API 返回植物列表时附加的统计字段（API 自动计算）
 export interface PlantWithStats extends Plant {
   photoCount: number;
-  coverPhotoId: string | null;  // taken_at DESC 最大的照片作为封面（最新照片优先）
+  coverPhotoId: string | null;  // taken_at DESC 最大的 photo 类型作为封面（跳过 text 条目）
 }
 ```
 

@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 
 function coverPhotoId(plantId: string): string | null {
 	const row = db
-		.prepare('SELECT id FROM photos WHERE plant_id = ? ORDER BY taken_at DESC LIMIT 1')
+		.prepare("SELECT id FROM photos WHERE plant_id = ? AND kind = 'photo' ORDER BY taken_at DESC LIMIT 1")
 		.get(plantId) as { id: string } | undefined;
 	return row?.id ?? null;
 }
