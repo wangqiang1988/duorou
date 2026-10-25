@@ -19,7 +19,7 @@ db.pragma('foreign_keys = ON');
  * 用 PRAGMA user_version 追踪当前 schema 版本
  * 每次升级只需要在 MIGRATIONS 列表追加新版本
  */
-const TARGET_SCHEMA_VERSION = 3;
+const TARGET_SCHEMA_VERSION = 4;
 
 interface Migration {
 	version: number;
@@ -97,6 +97,30 @@ const MIGRATIONS: Migration[] = [
 				'CREATE INDEX IF NOT EXISTS idx_photos_kind ON photos(kind)'
 			);
 		}
+	},
+	{
+		version: 4,
+		up: () => {
+			// photos 加 updated_at（最后一次编辑时间），用于主页按最近活动排序
+			const cols = db
+				.prepare("PRAGMA table_info(photos)")
+				.all() as Array<{name: string}>;
+			if (!cols.some((c) => c.name === 'updated_at')) {
+				db.exec(
+					'ALTER TABLE photos ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0'
+				);
+			}
+			// 回填：老条目没有"编辑"概念，updated_at = created_at
+			db.exec('UPDATE photos SET updated_at = created_at WHERE updated_at = 0');
+			// 封面查询（plant_id + kind + taken_at 倒序取一张）
+			db.exec(
+				'CREATE INDEX IF NOT EXISTS idx_photos_plant_kind_taken ON photos(plant_id, kind, taken_at)'
+			);
+			// 每株植物最近活动（plant_id + updated_at 取 max）
+			db.exec(
+				'CREATE INDEX IF NOT EXISTS idx_photos_plant_updated ON photos(plant_id, updated_at)'
+			);
+		}
 	}
 ];
 
@@ -150,6 +174,7 @@ export interface PhotoRow {
 	size_medium: number;
 	size_thumb: number;
 	created_at: number;
+	updated_at: number;
 }
 
 export function rowToPlant(r: PlantRow) {
@@ -180,6 +205,7 @@ export function rowToPhoto(r: PhotoRow) {
 		sizeOrig: r.size_orig,
 		sizeMedium: r.size_medium,
 		sizeThumb: r.size_thumb,
-		createdAt: r.created_at
+		createdAt: r.created_at,
+		updatedAt: r.updated_at
 	};
 }

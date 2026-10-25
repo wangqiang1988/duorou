@@ -16,6 +16,7 @@ export interface Plant {
 export interface PlantWithStats extends Plant {
 	photoCount: number;
 	coverPhotoId: ID | null;
+	lastActivityAt: number; // 最近活动时间：刚动过的植物排主页最前
 }
 
 export type PhotoKind = 'photo' | 'text';
@@ -35,6 +36,7 @@ export interface Photo {
 	sizeMedium: number;
 	sizeThumb: number;
 	createdAt: number;
+	updatedAt: number; // 最后一次编辑时间（老数据 = createdAt）
 }
 
 export function photoBlobUrl(id: ID, variant: 'orig' | 'medium' | 'thumb' = 'medium'): string {

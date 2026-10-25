@@ -91,8 +91,8 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 		const now = Date.now();
 		db.prepare(
 			`INSERT INTO photos (id, plant_id, taken_at, width, height, caption, mime, date_source,
-			                    kind, content, size_orig, size_medium, size_thumb, created_at)
-			 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)`
+			                    kind, content, size_orig, size_medium, size_thumb, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		).run(
 			id,
 			plantId,
@@ -106,6 +106,7 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 			kind === 'photo' ? origBuf!.length : 0,
 			mediumBuf?.length ?? 0,
 			thumbBuf?.length ?? 0,
+			now,
 			now
 		);
 
@@ -151,9 +152,16 @@ export function registerPhotoRoutes(app: FastifyInstance) {
 		const patchTaken = takenAt ?? existing.taken_at;
 		const patchCaption = caption ?? existing.caption;
 		const patchContent = content ?? existing.content;
+		// 只有值真的变了才更新 updated_at（避免"打开编辑又取消"把植物顶到最前）
+		const changed =
+			patchTaken !== existing.taken_at ||
+			patchCaption !== existing.caption ||
+			patchContent !== existing.content;
+		const prevUpdatedAt = existing.updated_at || existing.created_at;
+		const nextUpdatedAt = changed ? Date.now() : prevUpdatedAt;
 		db.prepare(
-			`UPDATE photos SET taken_at = ?, caption = ?, content = ? WHERE id = ?`
-		).run(patchTaken, patchCaption, patchContent, req.params.id);
+			`UPDATE photos SET taken_at = ?, caption = ?, content = ?, updated_at = ? WHERE id = ?`
+		).run(patchTaken, patchCaption, patchContent, nextUpdatedAt, req.params.id);
 
 		return rowToPhoto(
 			db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id) as PhotoRow

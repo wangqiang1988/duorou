@@ -32,7 +32,8 @@ async function main() {
 
 	app.setErrorHandler((err, req, reply) => {
 		app.log.error(err);
-		reply.code(err.statusCode ?? 500).send({ error: err.message });
+		const e = err as { statusCode?: number; message?: string };
+		reply.code(e.statusCode ?? 500).send({ error: e.message ?? 'internal error' });
 	});
 
 	try {

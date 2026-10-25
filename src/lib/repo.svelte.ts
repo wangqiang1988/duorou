@@ -25,7 +25,10 @@ export async function loadPhotos(plantId: string): Promise<Photo[]> {
 }
 
 export async function createPlant(
-	input: Omit<PlantWithStats, 'id' | 'createdAt' | 'updatedAt' | 'photoCount' | 'coverPhotoId'>
+	input: Omit<
+		PlantWithStats,
+		'id' | 'createdAt' | 'updatedAt' | 'photoCount' | 'coverPhotoId' | 'lastActivityAt'
+	>
 ): Promise<PlantWithStats> {
 	const plant = await plantsApi.create(input);
 	await loadPlants();
@@ -69,6 +72,8 @@ export async function updatePhoto(
 	patch: Partial<{takenAt: number; caption: string; content: string}>
 ): Promise<void> {
 	await photosApi.update(id, patch);
+	// 编辑条目会刷新该植物的"最近活动时间" → 主页排序会变，重新拉一次
+	await loadPlants();
 }
 
 export async function deletePhoto(id: string, _plantId: string): Promise<void> {

@@ -69,7 +69,7 @@ duorou/
 │       ├── db.ts                            # SQLite schema + 迁移系统 + 类型转换
 │       ├── storage.ts                       # 文件系统操作（写入/读取/删除二进制）
 │       └── routes/
-│           ├── plants.ts                    # 植物 CRUD + mode 过滤
+│           ├── plants.ts                    # 植物 CRUD + mode 过滤 + 最近活动排序
 │           └── photos.ts                    # 照片 multipart 上传 + blob 下载 + 文字条目
 │
 ├── src/                                     # 前端 SvelteKit
@@ -146,12 +146,14 @@ export interface Photo {
   sizeMedium: number;
   sizeThumb: number;
   createdAt: number;
+  updatedAt: number;        // 最后一次编辑时间（老数据 = createdAt）
 }
 
 // API 返回植物列表时附加的统计字段（API 自动计算）
 export interface PlantWithStats extends Plant {
   photoCount: number;
   coverPhotoId: string | null;  // taken_at DESC 最大的 photo 类型作为封面（跳过 text 条目）
+  lastActivityAt: number;       // 最近活动时间 = max(plant.updated_at, max(photos.updated_at))
 }
 ```
 
@@ -163,15 +165,15 @@ export interface PlantWithStats extends Plant {
 |---|---|---|---|---|
 | GET | `/api/health` | 健康检查 | —— | `{ok, ts}` |
 | GET | `/api/stats` | 统计 | —— | `{plants, photos, totalBytes}` |
-| GET | `/api/plants` | 植物列表 | `?mode=alive\|dead\|all` | `PlantWithStats[]` |
-| GET | `/api/plants/:id` | 植物详情 | —— | `PlantWithStats`（含 photoCount + coverPhotoId） |
+| GET | `/api/plants` | 植物列表 | `?mode=alive\|dead\|all` | `PlantWithStats[]`（按最近活动排序）|
+| GET | `/api/plants/:id` | 植物详情 | —— | `PlantWithStats`（含 photoCount + coverPhotoId + lastActivityAt）|
 | POST | `/api/plants` | 新建植物 | `{name, species?, acquiredAt, notes?, diedAt?}` | `PlantWithStats` |
 | PATCH | `/api/plants/:id` | 更新植物 | `{name?, species?, acquiredAt?, notes?, diedAt?}` | `PlantWithStats` |
 | DELETE | `/api/plants/:id` | 删除植物 | —— | `{ok}`（级联删照片） |
 | GET | `/api/photos` | 照片列表 | `?plantId=xxx`（DESC 排序） | `Photo[]`（含 text + photo） |
 | GET | `/api/photos/:id` | 单张照片元数据 | —— | `Photo` |
 | POST | `/api/photos` | 上传条目 | multipart：`plantId, takenAt, kind('photo'\|'text'), content?(text), dateSource, file/thumb/medium(photo)` | `Photo` |
-| PATCH | `/api/photos/:id` | 更新条目 | `{takenAt?, caption?, content?}` | `Photo` |
+| PATCH | `/api/photos/:id` | 更新条目 | `{takenAt?, caption?, content?}`（值有变化才写 `updated_at`）| `Photo` |
 | DELETE | `/api/photos/:id` | 删除条目 | —— | `{ok}`（同时删二进制文件） |
 | GET | `/api/photos/:id/blob` | 下载二进制 | `?v=thumb\|medium\|orig` | 二进制流 |
 
@@ -211,6 +213,7 @@ CREATE TABLE photos (
   size_medium  INTEGER NOT NULL DEFAULT 0,
   size_thumb   INTEGER NOT NULL DEFAULT 0,
   created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE
 );
 
@@ -218,15 +221,18 @@ CREATE INDEX idx_photos_plant ON photos(plant_id);
 CREATE INDEX idx_photos_taken ON photos(taken_at);
 CREATE INDEX idx_plants_died  ON plants(died_at);
 CREATE INDEX idx_photos_kind  ON photos(kind);
+CREATE INDEX idx_photos_plant_kind_taken ON photos(plant_id, kind, taken_at);
+CREATE INDEX idx_photos_plant_updated   ON photos(plant_id, updated_at);
 ```
 
-**迁移系统**（`api/src/db.ts`）：用 `PRAGMA user_version` 追踪版本。`TARGET_SCHEMA_VERSION = 3`，启动时自动跑未执行迁移，全部包在事务里。
+**迁移系统**（`api/src/db.ts`）：用 `PRAGMA user_version` 追踪版本。`TARGET_SCHEMA_VERSION = 4`，启动时自动跑未执行迁移，全部包在事务里。
 
 | 版本 | 迁移内容 |
 |---|---|
 | v1 | 初始 schema（plants + photos + 索引） |
 | v2 | plants 加 `died_at` 字段 + `idx_plants_died` |
 | v3 | photos 加 `kind` + `content` 字段 + `idx_photos_kind` |
+| v4 | photos 加 `updated_at` 字段（回填 = created_at）+ `idx_photos_plant_kind_taken` + `idx_photos_plant_updated` |
 
 **未来加字段流程**：
 1. 改 `db.ts`：在 `rowToPlant`/`rowToPhoto` 加字段映射
@@ -234,6 +240,8 @@ CREATE INDEX idx_photos_kind  ON photos(kind);
 3. 部署即可，老库自动升级
 
 **老库兼容性**：所有迁移都先 `PRAGMA table_info` 检查列存在再 ALTER，幂等。
+
+**v4 回填注意**：`UPDATE photos SET updated_at = created_at WHERE updated_at = 0` —— 老条目没有"编辑"概念，回填成 created_at 语义最自然（相当于"从来没改过"）。
 
 ---
 
@@ -275,9 +283,11 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 | `src/lib/types.ts` | 类型定义 | `Plant` / `Photo` / `PlantWithStats` / `PhotoKind` |
 
 **全局 store 字段**（`repo.svelte.ts`）：
-- `plants: PlantWithStats[]` —— 主页卡片源
+- `plants: PlantWithStats[]` —— 主页卡片源（顺序 = 后端 `lastActivityAt` 倒序）
 - `plantsState.mode: 'alive' | 'dead'` —— 主页 tab 状态（class + $state，不是 export const $state，因为 Svelte 5 export const 不可重赋值）
 - 详情页用组件局部 `$state: Photo[]` 和 `$state: Set<string>`（composeIds）
+
+**注意**：所有会改变"最近活动时间"的写操作（`addPhoto` / `updatePhoto` / `deletePhoto` / `updatePlant` / `createPlant` / `deletePlant`）末尾都要 `await loadPlants()`，否则主页顺序不刷新。`updatePhoto` 早期漏了这次调用。
 
 ---
 
@@ -289,6 +299,7 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 - Tab：`🌱 花园` / `🪦 纪念碑`（switchMode 调 `setPlantsMode`）
 - 品种 chip 横向滚动条：`全部 / 桃蛋 / 玉露 / 其他`
 - 网格：`grid-cols-2 sm:grid-cols-3`
+- **排序由后端决定**：`GET /api/plants` 已按 `lastActivityAt DESC` 排好，前端 `visiblePlants = plants.filter(...)` 保留原序，不用再排
 - 浮动 `+` 按钮（仅 alive tab 显示）
 
 ### `src/routes/plant/[id]/+page.svelte` —— 详情页核心（最复杂）
@@ -415,6 +426,9 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 | **后端 CJS 输出 + `dist/server.cjs`** | ESM 在 Node 顶层 await + CJS 模块互操作复杂；CJS + esbuild 简单可靠 |
 | **不分页（主页直接 GET all plants）** | 预计 ≤ 100 株植物，分页增加复杂度不值 |
 | **text 条目不参与拼接图** | 拼接图是照片场景，文字混入会很奇怪 |
+| **封面 = 拍摄时间最新的照片** | 封面代表"这株现在长什么样"，按 `taken_at DESC` 取；**跳过 text 条目**（文字没图，否则封面空白） |
+| **主页按"最近活动时间"全局重排** | 用户更新了某株的照片/文字/信息后，希望这株立刻出现在最前，而不是沉在按创建时间排的老位置。`lastActivityAt = max(plant.updated_at, max(photos.updated_at))`，`ORDER BY last_activity DESC, created_at DESC`。代价：长期没动过的植物会往下沉（这是用户明确选的方案） |
+| **`photos.updated_at` 只在值真变了时 bump** | 否则"打开编辑又取消"会把植物白白顶到最前。回填的老数据 `updated_at = created_at` |
 | **`?v=thumb/medium/orig` 三档** | 列表用 thumb 省带宽；详情用 medium；lightbox 用 orig |
 | **dev proxy `/api → localhost:3011`** | 同源避免 CORS；nginx 反代同样路径 |
 | **iOS 主屏幕图标走 `apple-touch-icon-180x180`** | iOS 不读 manifest 的 `icons`；必须 `<link rel="apple-touch-icon">` + 180×180 最佳 |
@@ -486,8 +500,12 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 
 | Commit | 说明 |
 |---|---|
-| (本次) | 二次修：apple-touch-icon 必须 100% 不透明（之前 92% 安全区导致透明角露出主屏底色）|
-| `1e08720` | iOS 主屏图标裁掉透明边距避免白边 + apple-touch-icon-precomposed |
+| (本次) | 主页按最近活动时间重排：photos 加 updated_at（schema v4）+ `lastActivityAt` 排序，刚动过的植物排最前 |
+| `a1123a9` | 封面跳过 text 条目，避免最近记录是文字时无封面图 |
+| `d9213d2` | 封面改用最新照片（taken_at DESC 优先）|
+| `1e9f522` | revert: 回退图标到粉樱多肉原图|
+| `2a5b8f5` | fix: iOS 主屏图标必须 100% 不透明|
+| `1e08720` | fix: iOS 主屏图标裁掉透明边距，避免白边 + apple-touch-icon-precomposed |
 | `91ad403` | 替换项目图标为 icon.png（粉樱多肉）|
 | `d557640` | 添加 apple-touch-icon-180x180，iOS 主屏幕图标 |
 | `91ad403` | 替换项目图标为 duorou.png |
@@ -517,6 +535,7 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 - 多用户场景完全未设计
 - 主页 tab 切换 cache miss 时短暂空状态
 - 没有卸载/重装提示（localStorage appName 丢失）
+- 主页按最近活动排序后，长期没动的植物会往下沉（已知取舍，用户已确认接受）
 
 ---
 
