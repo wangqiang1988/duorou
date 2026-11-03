@@ -295,11 +295,12 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 
 ### `src/routes/+page.svelte` —— 主页
 
-- 顶部 sticky header：appName + 设置齿轮
+- 顶部 sticky header：appName + 搜索按钮（🔍）+ 设置齿轮
 - Tab：`🌱 花园` / `🪦 纪念碑`（switchMode 调 `setPlantsMode`）
 - 品种 chip 横向滚动条：`全部 / 桃蛋 / 玉露 / 其他`
 - 网格：`grid-cols-2 sm:grid-cols-3`
 - **排序由后端决定**：`GET /api/plants` 已按 `lastActivityAt DESC` 排好，前端 `visiblePlants = plants.filter(...)` 保留原序，不用再排
+- **搜索**：点右上角 🔍 展开输入框，输入名字或品种做模糊匹配（不区分大小写）；可与品种 chip 叠加；关闭搜索会清空 query
 - 浮动 `+` 按钮（仅 alive tab 显示）
 
 ### `src/routes/plant/[id]/+page.svelte` —— 详情页核心（最复杂）
@@ -428,6 +429,7 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 | **text 条目不参与拼接图** | 拼接图是照片场景，文字混入会很奇怪 |
 | **封面 = 拍摄时间最新的照片** | 封面代表"这株现在长什么样"，按 `taken_at DESC` 取；**跳过 text 条目**（文字没图，否则封面空白） |
 | **主页按"最近活动时间"全局重排** | 用户更新了某株的照片/文字/信息后，希望这株立刻出现在最前，而不是沉在按创建时间排的老位置。`lastActivityAt = max(plant.updated_at, max(photos.updated_at))`，`ORDER BY last_activity DESC, created_at DESC`。代价：长期没动过的植物会往下沉（这是用户明确选的方案） |
+| **搜索框用 `type="text"` 而非 `type="search"`** | Safari/Chrome 的 `type="search"` 会自带一个原生清除按钮（蓝色 ✕），和自绘的清除按钮重叠。改用 `type="text"` + `autocomplete="off"` |
 | **`photos.updated_at` 只在值真变了时 bump** | 否则"打开编辑又取消"会把植物白白顶到最前。回填的老数据 `updated_at = created_at` |
 | **`?v=thumb/medium/orig` 三档** | 列表用 thumb 省带宽；详情用 medium；lightbox 用 orig |
 | **dev proxy `/api → localhost:3011`** | 同源避免 CORS；nginx 反代同样路径 |
@@ -500,7 +502,8 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 
 | Commit | 说明 |
 |---|---|
-| (本次) | 主页按最近活动时间重排：photos 加 updated_at（schema v4）+ `lastActivityAt` 排序，刚动过的植物排最前 |
+| (本次) | 主页右上角加搜索：🔍 展开输入框，按名字/品种模糊匹配，可与品种 chip 叠加 |
+| `18e7ed4` | 主页按最近活动时间重排：photos 加 updated_at（schema v4）+ `lastActivityAt` 排序，刚动过的植物排最前 |
 | `a1123a9` | 封面跳过 text 条目，避免最近记录是文字时无封面图 |
 | `d9213d2` | 封面改用最新照片（taken_at DESC 优先）|
 | `1e9f522` | revert: 回退图标到粉樱多肉原图|

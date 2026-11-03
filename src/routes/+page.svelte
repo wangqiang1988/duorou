@@ -11,12 +11,26 @@
 	import { appName } from '$lib/appName.svelte';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import type { PlantWithStats } from '$lib/types';
 
 	let loaded = $state(false);
 	let activeFilter = $state<'all' | string>('all');
+	let searchOpen = $state(false);
+	let query = $state('');
 
 	const groups = $derived(loaded ? groupBySpecies(plants) : []);
 	const hasUnclassified = $derived(plants.some((p) => !p.species.trim()));
+
+	// 搜索：名字或品种模糊匹配（不区分大小写）
+	const trimmedQuery = $derived(query.trim().toLowerCase());
+	function matchesQuery(p: PlantWithStats, q: string): boolean {
+		return (
+			p.name.toLowerCase().includes(q) || p.species.toLowerCase().includes(q)
+		);
+	}
+	const searchedPlants = $derived(
+		trimmedQuery ? plants.filter((p) => matchesQuery(p, trimmedQuery)) : plants
+	);
 
 	onMount(async () => {
 		await loadPlants();
@@ -43,12 +57,21 @@
 		await setPlantsMode(mode);
 	}
 
+	function toggleSearch() {
+		searchOpen = !searchOpen;
+		if (!searchOpen) query = '';
+	}
+
+	function clearSearch() {
+		query = '';
+	}
+
 	const visiblePlants = $derived(
 		activeFilter === 'all'
-			? plants
+			? searchedPlants
 			: activeFilter === '__unclassified__'
-				? plants.filter((p) => !p.species.trim())
-				: plants.filter((p) => p.species.trim() === activeFilter)
+				? searchedPlants.filter((p) => !p.species.trim())
+				: searchedPlants.filter((p) => p.species.trim() === activeFilter)
 	);
 </script>
 
@@ -60,14 +83,66 @@
 			<h1 class="text-xl font-semibold text-leaf-800">{appName.value}</h1>
 			<p class="text-xs text-leaf-600/70">记录每一片叶子的时光</p>
 		</div>
-		<a
-			href="/settings"
-			class="w-9 h-9 rounded-full bg-white border border-leaf-100 flex items-center justify-center text-leaf-700 flex-shrink-0"
-			aria-label="设置"
-		>
-			⚙
-		</a>
+		<div class="flex items-center gap-2 flex-shrink-0">
+			<button
+				type="button"
+				onclick={toggleSearch}
+				class="w-9 h-9 rounded-full bg-white border border-leaf-100 flex items-center justify-center text-leaf-700 active:opacity-60"
+				aria-label={searchOpen ? '关闭搜索' : '搜索多肉'}
+				aria-expanded={searchOpen}
+			>
+				{#if searchOpen}
+					✕
+				{:else}
+					🔍
+				{/if}
+			</button>
+			<a
+				href="/settings"
+				class="w-9 h-9 rounded-full bg-white border border-leaf-100 flex items-center justify-center text-leaf-700 flex-shrink-0"
+				aria-label="设置"
+			>
+				⚙
+			</a>
+		</div>
 	</div>
+
+	<!-- 搜索框 -->
+	{#if searchOpen}
+		<div class="max-w-3xl mx-auto pb-2">
+			<div class="relative">
+				<span
+					class="absolute left-3 top-1/2 -translate-y-1/2 text-leaf-600/50 text-sm pointer-events-none"
+					aria-hidden="true"
+					>🔍</span
+				>
+				<input
+					type="text"
+					bind:value={query}
+					placeholder="搜索名字或品种…"
+					aria-label="搜索多肉"
+					enterkeyhint="search"
+					autocomplete="off"
+					class="w-full pl-8 pr-8 py-2 rounded-full bg-white border border-leaf-200 text-sm text-leaf-800 placeholder:text-leaf-600/50 focus:border-leaf-400 focus:outline-none"
+				/>
+				{#if query}
+					<button
+						type="button"
+						onclick={clearSearch}
+						class="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-leaf-100 text-leaf-700 text-[11px] flex items-center justify-center active:opacity-70"
+						aria-label="清空搜索"
+					>
+						✕
+					</button>
+				{/if}
+			</div>
+			{#if trimmedQuery}
+				<p class="text-[11px] text-leaf-600/60 mt-1.5 px-1">
+					找到 {searchedPlants.length} 株
+				</p>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- 花园 / 纪念碑 tab -->
 	<div class="max-w-3xl mx-auto pb-2 flex gap-1">
@@ -176,7 +251,11 @@
 			</div>
 		{:else if visiblePlants.length === 0}
 			<div class="text-center py-16 text-leaf-600/70 text-sm">
-				这个分类下还没有{plantsState.mode === 'dead' ? '纪念碑' : '多肉'}
+				{#if trimmedQuery}
+					没有匹配「{query.trim()}」的{plantsState.mode === 'dead' ? '纪念碑' : '多肉'}
+				{:else}
+					这个分类下还没有{plantsState.mode === 'dead' ? '纪念碑' : '多肉'}
+				{/if}
 			</div>
 		{:else}
 			<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
