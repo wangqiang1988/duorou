@@ -430,6 +430,7 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 | **封面 = 拍摄时间最新的照片** | 封面代表"这株现在长什么样"，按 `taken_at DESC` 取；**跳过 text 条目**（文字没图，否则封面空白） |
 | **主页按"最近活动时间"全局重排** | 用户更新了某株的照片/文字/信息后，希望这株立刻出现在最前，而不是沉在按创建时间排的老位置。`lastActivityAt = max(plant.updated_at, max(photos.updated_at))`，`ORDER BY last_activity DESC, created_at DESC`。代价：长期没动过的植物会往下沉（这是用户明确选的方案） |
 | **搜索框用 `type="text"` 而非 `type="search"`** | Safari/Chrome 的 `type="search"` 会自带一个原生清除按钮（蓝色 ✕），和自绘的清除按钮重叠。改用 `type="text"` + `autocomplete="off"` |
+| **容器健康检查用 `127.0.0.1` 不用 `localhost`** | 容器内 localhost 优先解析到 `::1`，服务只监听 IPv4 时 busybox wget 只试第一个结果 → 连不上判 unhealthy。另用独立 http server 监听 `::1` 双保险（Fastify 单实例只能 listen 一次）|
 | **`photos.updated_at` 只在值真变了时 bump** | 否则"打开编辑又取消"会把植物白白顶到最前。回填的老数据 `updated_at = created_at` |
 | **`?v=thumb/medium/orig` 三档** | 列表用 thumb 省带宽；详情用 medium；lightbox 用 orig |
 | **dev proxy `/api → localhost:3011`** | 同源避免 CORS；nginx 反代同样路径 |
@@ -460,7 +461,22 @@ deletePhotoFiles(id)  // 三档全删，ENOENT 忽略
 - `api` 服务：node 20-alpine + 自打包 CJS，端口 3011（不直接暴露）
 - 网络：`duorou-net`（bridge）
 - 依赖：`app` 依赖 `api` service_started
-- 健康检查：`wget http://localhost/...`
+- 健康检查：`wget http://127.0.0.1/...` —— **必须写 `127.0.0.1`，不能写 `localhost`**（见下方说明）
+
+### 健康检查不能用 localhost（IPv6 坑）
+
+容器内 `localhost` 会优先解析到 `::1`（IPv6），而 api 服务只监听 `0.0.0.0`（IPv4），
+busybox `wget` 只尝试第一个解析结果 → 连 `::1` 报 ECONNREFUSED → 容器被判 **unhealthy**。
+
+**修复（双保险）**：
+1. Dockerfile + docker-compose 的 healthcheck 全部改用 `http://127.0.0.1:3011/api/health`
+2. api 额外起一个独立 `http.createServer` 监听 `::1`，让 `localhost` 无论解析到哪个都能通
+   （Fastify 单实例只能 `listen()` 一次，第二次会报 `already listening`，所以不能用 Fastify 那个 API）
+   - 开关：`LISTEN_IPV6=false` 可关掉
+
+验证：`127.0.0.1` / `[::1]` / `localhost` 三种写法都返回 200。
+
+⚠️ `app`（nginx）容器的健康检查也一并改成 `127.0.0.1`（nginx 本身监听了 `[::]:80`，本来就连得上，但保持一致）
 
 构建：
 ```bash
@@ -502,7 +518,8 @@ cp -r ./data ./data.bak.$(date +%Y%m%d)
 
 | Commit | 说明 |
 |---|---|
-| (本次) | 主页右上角加搜索：🔍 展开输入框，按名字/品种模糊匹配，可与品种 chip 叠加 |
+| (本次) | 修 api 容器 unhealthy：健康检查改用 127.0.0.1（localhost 解析到 ::1 连不上），api 额外监听 IPv6 回环 |
+| `78e71d8` | 主页右上角加搜索：🔍 展开输入框，按名字/品种模糊匹配，可与品种 chip 叠加 |
 | `18e7ed4` | 主页按最近活动时间重排：photos 加 updated_at（schema v4）+ `lastActivityAt` 排序，刚动过的植物排最前 |
 | `a1123a9` | 封面跳过 text 条目，避免最近记录是文字时无封面图 |
 | `d9213d2` | 封面改用最新照片（taken_at DESC 优先）|

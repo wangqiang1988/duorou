@@ -20,7 +20,9 @@ services:
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:3011/api/health"]
+      # 必须用 127.0.0.1：容器内 localhost 可能解析到 ::1（IPv6），
+      # 而服务只监听 IPv4，busybox wget 只试第一个解析结果 → 连不上判 unhealthy
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3011/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -40,7 +42,8 @@ services:
     ports:
       - "${DUOROU_HTTP_PORT:-8080}:80"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/"]
+      # 同样用 127.0.0.1，规避 localhost → ::1 的解析问题
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
       retries: 3

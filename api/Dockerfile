@@ -38,8 +38,11 @@ RUN mkdir -p /app/data/photos
 VOLUME ["/app/data"]
 
 # 健康检查
+# 注意：必须用 127.0.0.1 而不是 localhost。
+# 容器内 localhost 会解析出 ::1（IPv6），而本服务只监听 0.0.0.0（IPv4），
+# busybox wget 只尝试第一个解析结果 → 连 ::1 被拒 → 容器被判 unhealthy。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -q -O - http://localhost:3011/api/health || exit 1
+    CMD wget -q -O - http://127.0.0.1:3011/api/health || exit 1
 
 EXPOSE 3011
 
